@@ -109,6 +109,31 @@ def save_image(item, idx, out_fmt):
     return filename, "/images/" + filename
 
 
+def upstream_err_text(err, code):
+    """把上游错误体压成一行人类可读的字符串。
+
+    上游常返回嵌套结构 {"error": {"message": ..., "code": ...}}，直接丢给前端
+    会渲染成一坨 JSON。这里只取最内层的 message，取不到再退回整体序列化。
+    """
+    msg = None
+    if isinstance(err, dict):
+        node = err
+        for _ in range(4):                       # 最多剥几层 error 包装
+            if not isinstance(node, dict):
+                break
+            if isinstance(node.get("message"), str):
+                msg = node["message"]
+                break
+            node = node.get("error")
+        if msg is None and isinstance(node, str):
+            msg = node
+    elif isinstance(err, str):
+        msg = err
+    if not msg:
+        msg = "HTTP %s" % code
+    return msg.strip() or ("HTTP %s" % code)
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -315,8 +340,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     try:
                         err = json.loads(e.read().decode("utf-8"))
                     except Exception:
-                        err = "HTTP " + str(e.code)
-                    self._emit({"stage": "error", "http": e.code, "message": err})
+                        err = None
+                    self._emit({"stage": "error", "http": e.code,
+                                "message": upstream_err_text(err, e.code)})
                     return
                 except Exception as e:
                     self._emit({"stage": "error", "message": str(e)})

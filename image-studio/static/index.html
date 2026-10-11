@@ -890,6 +890,17 @@
     opacity: 0.4;
     animation: pulse 2.5s infinite;
   }
+  /* 结束态（成功/失败/中断）：转圈停止，避免"其实早已结束却仍在转"的错觉 */
+  .progress-card.finished .spinner-ring {
+    animation: none;
+    border-color: var(--border);
+  }
+  .progress-card.finished .spinner-pulse { animation: none; opacity: 0.25; }
+  .progress-card.finished .progress-spinner-wrap > svg { opacity: 0.35; }
+  .progress-card.failed .spinner-ring { border-color: var(--danger); }
+  .progress-card.failed .spinner-pulse { border-color: var(--danger); }
+  .progress-card.failed .progress-spinner-wrap > svg { color: var(--danger); }
+  .progress-card .progress-status-text { word-break: break-word; }
   .step-stepper {
     display: flex;
     align-items: center;
@@ -2337,6 +2348,17 @@ function markStep(num, status){
 }
 function resetSteps(){
   [1, 2, 3].forEach(n => markStep(n, null));
+  $('progressCard').classList.remove('finished', 'failed');
+}
+/* 收尾：停转圈 + 冻结计时。任何非成功路径都必须调用，否则用户会看到"其实早已结束"的动画。 */
+function finishProgress(kind){
+  stopTimer();
+  const card = $('progressCard');
+  card.classList.add('finished');
+  card.classList.toggle('failed', kind === 'failed');
+  $('stTimer').textContent = kind === 'done'
+    ? `共耗时 ${elapsedSec()} 秒`
+    : `已中止 · 等待 ${elapsedSec()} 秒`;
 }
 
 /* ================= 本地配置持久化 ================= */
@@ -2864,23 +2886,44 @@ async function go(){
     setTimeout(loadGallery, 3000);
   } else if(netErr){
     markStep(2, 'error');
-    $('stText').textContent = '连接中断或错误: ' + netErr.message;
-    showToast('生成失败: ' + netErr.message, 'error');
+    finishProgress('failed');
+    $('stText').textContent = '连接中断或错误: ' + friendlyErrMsg(netErr.message);
+    showToast('生成失败: ' + friendlyErrMsg(netErr.message), 'error');
   } else if(errEv){
     markStep(2, 'error');
-    const msg = (typeof errEv.message === 'string') ? errEv.message : JSON.stringify(errEv.message);
+    finishProgress('failed');
+    let msg = (typeof errEv.message === 'string') ? errEv.message : JSON.stringify(errEv.message);
+    msg = friendlyErrMsg(msg, errEv.http);
     $('stText').textContent = '生成失败: ' + msg;
-    showToast('上游错误: ' + msg, 'error');
+    showToast('生成失败: ' + msg, 'error');
   } else if(doneEv && doneEv.items && doneEv.items.length){
     markStep(1, 'done'); markStep(2, 'done'); markStep(3, 'done');
+    finishProgress('done');
     $('progressCard').classList.add('hide');
     renderHeroResult(doneEv.items[0]);
     loadGallery();
     showToast(`创作完成！用时 ${elapsedSec()} 秒 ✨`, 'success');
   } else {
+    finishProgress('failed');
     $('stText').textContent = '生成结束但未获取到图像数据';
     showToast('未收到图像数据，请稍后刷新图库查看', 'warning');
   }
+}
+
+/* 上游报错常见于"模型不支持该能力"，翻译成人话并给出下一步动作 */
+function friendlyErrMsg(raw, http){
+  const s = String(raw || '');
+  if(/invalid images|should contain between/i.test(s)){
+    return '当前模型不支持图生图（该渠道不接受 images 参数）。请换用支持图生图的模型，或切回「文生图」模式重试。';
+  }
+  if(/model does not exist|unknown model|model_not_found/i.test(s)){
+    return '当前模型不可用（上游不认识该模型名）。请到供应商管理里核对模型列表。';
+  }
+  if(/insufficient|quota|rate limit|too many requests/i.test(s)){
+    return '上游额度不足或触发限流，请稍后重试或更换渠道。';
+  }
+  if(http && http !== 400) return `上游返回 HTTP ${http}：${s}`;
+  return s;
 }
 
 $('go').onclick = go;
