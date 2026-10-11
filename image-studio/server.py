@@ -8,6 +8,8 @@ Image Fantasy —— 自托管图像生成 Web 应用（零依赖，仅用 Pytho
   - 全参数暴露：prompt / size / n / output_format / output_compression /
     response_format / watermark(水印开关) / 参考图编辑(edit)
   - GPT-Image 兼容参数(quality/style/background)透传 + 任意额外参数 JSON 透传
+  - 供应商与模型管理：供应商（Base URL + Key + 模型清单）持久化在 data/providers.json，
+    前端只需选择供应商与模型；生成请求由服务端注入凭据
   - 实时进度：/api/generate 以 NDJSON 分块流式返回阶段事件
     （accepted → upstream → saving → done / error），前端可显示生成进度
   - 服务端图库持久化：生成的图像落盘到 data/images，索引存 data/gallery.json，
@@ -31,6 +33,7 @@ import base64
 import os
 import time
 import re
+import uuid
 
 PORT = int(os.environ.get("PORT", "8080"))
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -38,6 +41,7 @@ STATIC_DIR = os.path.join(BASE_DIR, "static")
 DATA_DIR = os.environ.get("DATA_DIR", os.path.join(BASE_DIR, "data"))
 IMAGES_DIR = os.path.join(DATA_DIR, "images")
 GALLERY_FILE = os.path.join(DATA_DIR, "gallery.json")
+PROVIDERS_FILE = os.path.join(DATA_DIR, "providers.json")
 os.makedirs(IMAGES_DIR, exist_ok=True)
 
 _lock = threading.Lock()
@@ -54,6 +58,20 @@ def load_gallery():
 def save_gallery(items):
     with _lock:
         with open(GALLERY_FILE, "w", encoding="utf-8") as f:
+            json.dump(items, f, ensure_ascii=False, indent=2)
+
+
+def load_providers():
+    try:
+        with open(PROVIDERS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+
+def save_providers(items):
+    with _lock:
+        with open(PROVIDERS_FILE, "w", encoding="utf-8") as f:
             json.dump(items, f, ensure_ascii=False, indent=2)
 
 
@@ -159,6 +177,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._send_file(fpath, ctype)
         elif p == "/api/gallery":
             self._send(200, load_gallery())
+        elif p == "/api/providers":
+            self._send(200, load_providers())
         elif p == "/api/ping":
             self._send(200, {"ok": True, "time": int(time.time() * 1000)})
         else:
@@ -166,6 +186,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_DELETE(self):
         parsed = urllib.parse.urlparse(self.path)
+        m = re.match(r"^/api/providers/([^/]+)$", parsed.path)
+        if m:
+            self._delete_provider(m.group(1)); return
         m = re.match(r"^/api/gallery/([^/]+)$", parsed.path)
         if not m:
             self._send(404, {"error": "not found"}); return
@@ -188,8 +211,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
         save_gallery(new_items)
         self._send(200, {"ok": True})
 
+    def do_PUT(self):
+        parsed = urllib.parse.urlparse(self.path)
+        m = re.match(r"^/api/providers/([^/]+)$", parsed.path)
+        if not m:
+            self._send(404, {"error": "not found"}); return
+        self._update_provider(m.group(1))
+
     def do_POST(self):
-        if self.path != "/api/generate":
+        p = urllib.parse.urlparse(self.path).path
+        if p == "/api/providers":
+            self._create_provider(); return
+        if p == "/api/fetch-models":
+            self._fetch_models(); return
+        if p != "/api/generate":
             self._send(404, {"error": "not found"}); return
         try:
             length = int(self.headers.get("Content-Length", 0))
@@ -197,16 +232,29 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except Exception as e:
             self._send(400, {"error": "请求解析失败: " + str(e)}); return
 
-        key = (data.get("key") or "").strip()
-        base = (data.get("base") or "https://api.openai.com/v1").strip().rstrip("/")
-        model = data.get("model") or "gpt-image-1"
+        provider_id = data.get("provider_id") or ""
+        model = (data.get("model") or "").strip()
         mode = data.get("mode") or "generate"
         prompt = data.get("prompt") or ""
         params = data.get("params") or {}
         extra = data.get("extra") or {}
 
-        if not key:
-            self._send(400, {"error": "缺少 API Key"}); return
+        prov = None
+        for it in load_providers():
+            if it.get("id") == provider_id:
+                prov = it
+                break
+        if prov is None:
+            self._send(400, {"error": "供应商不存在或已被删除，请回首页重新选择。"}); return
+        base = (prov.get("base") or "").strip().rstrip("/")
+        key = (prov.get("key") or "").strip()
+        if not base:
+            self._send(400, {"error": "该供应商缺少 Base URL，请到供应商管理里补上。"}); return
+        if not model:
+            models = prov.get("models") or []
+            model = models[0] if models else ""
+        if not model:
+            self._send(400, {"error": "该供应商还没有模型，请先添加。"}); return
 
         # 构造上游请求体
         payload = {"model": model, "prompt": prompt}
@@ -243,11 +291,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
         endpoint = base + ("/images/edits" if mode == "edit" else "/images/generations")
         body = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(
-            endpoint, data=body,
-            headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"},
-            method="POST",
-        )
+        hdrs = {"Content-Type": "application/json"}
+        if key:
+            hdrs["Authorization"] = "Bearer " + key
+        req = urllib.request.Request(endpoint, data=body, headers=hdrs, method="POST")
 
         # ---- 以下走 NDJSON 流式响应：阶段事件实时推送给前端 ----
         self._start_stream()
@@ -303,6 +350,102 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._end_stream()
             except Exception:
                 pass
+
+    # ---- 供应商管理 ----
+
+    def _read_json_body(self):
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            return json.loads(self.rfile.read(length) or b"{}")
+        except Exception:
+            return None
+
+    def _provider_fields(self, body):
+        name = (body.get("name") or "").strip()
+        base = (body.get("base") or "").strip().rstrip("/")
+        key = (body.get("key") or "").strip()
+        raw = body.get("models") or []
+        if not isinstance(raw, list):
+            raw = []
+        seen, models = set(), []
+        for m in raw:
+            m = str(m).strip()
+            if m and m not in seen:
+                seen.add(m); models.append(m)
+        return name, base, key, models
+
+    def _create_provider(self):
+        body = self._read_json_body()
+        if body is None:
+            self._send(400, {"error": "请求解析失败"}); return
+        name, base, key, models = self._provider_fields(body)
+        if not name or not base:
+            self._send(400, {"error": "名称和 Base URL 必填"}); return
+        items = load_providers()
+        prov = {
+            "id": "p_" + uuid.uuid4().hex[:8],
+            "name": name, "base": base, "key": key,
+            "models": models, "created": int(time.time() * 1000),
+        }
+        items.append(prov)
+        save_providers(items)
+        self._send(200, prov)
+
+    def _update_provider(self, pid):
+        body = self._read_json_body()
+        if body is None:
+            self._send(400, {"error": "请求解析失败"}); return
+        name, base, key, models = self._provider_fields(body)
+        items = load_providers()
+        found = None
+        for it in items:
+            if it.get("id") == pid:
+                if name: it["name"] = name
+                if base: it["base"] = base
+                it["key"] = key
+                it["models"] = models
+                found = it
+                break
+        if found is None:
+            self._send(404, {"error": "供应商不存在"}); return
+        save_providers(items)
+        self._send(200, found)
+
+    def _delete_provider(self, pid):
+        items = load_providers()
+        new_items = [it for it in items if it.get("id") != pid]
+        if len(new_items) == len(items):
+            self._send(404, {"error": "供应商不存在"}); return
+        save_providers(new_items)
+        self._send(200, {"ok": True})
+
+    def _fetch_models(self):
+        body = self._read_json_body()
+        if body is None:
+            self._send(400, {"error": "请求解析失败"}); return
+        base = (body.get("base") or "").strip().rstrip("/")
+        key = (body.get("key") or "").strip()
+        if not base:
+            self._send(400, {"error": "缺少 Base URL"}); return
+        hdrs = {}
+        if key:
+            hdrs["Authorization"] = "Bearer " + key
+        req = urllib.request.Request(base + "/models", headers=hdrs)
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                up = json.loads(resp.read().decode("utf-8"))
+            data = up.get("data") or up.get("models") or []
+            names = []
+            for m in data:
+                if isinstance(m, dict) and m.get("id"):
+                    names.append(str(m["id"]))
+                elif isinstance(m, str):
+                    names.append(m)
+            self._send(200, {"models": sorted(set(names))})
+        except urllib.error.HTTPError as e:
+            self._send(502, {"error": "上游返回 HTTP %s（部分渠道不提供 /models 接口，可手动填写模型列表）" % e.code})
+        except Exception as e:
+            self._send(502, {"error": "拉取失败：%s" % e})
 
     def log_message(self, *a):
         pass

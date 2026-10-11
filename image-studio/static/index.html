@@ -23,6 +23,7 @@
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
   .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
   label{display:block;font-size:12px;color:var(--mut);margin-bottom:5px}
+  .lbl2{font-size:12px;color:var(--mut)}
   input,select,textarea{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:9px;
     background:#fff;color:var(--txt);font-size:13px;font-family:inherit}
   input[readonly]{background:#f7f8fa;color:var(--mut)}
@@ -37,8 +38,12 @@
   .btn:disabled{opacity:.55;cursor:not-allowed}
   .btn.ghost{background:#fff;color:var(--pri);border:1px solid var(--pri)}
   .btn.ghost:hover{background:var(--soft)}
+  .btn.sm{padding:8px 16px;font-size:13px;border-radius:9px}
   .genbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:4px}
   .kbd{font-size:12px;color:var(--mut)}
+  .row{display:flex;gap:14px;align-items:center;margin:4px 0 2px;flex-wrap:wrap}
+  .chk{display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--txt);cursor:pointer;user-select:none}
+  .chk input{width:auto}
   details{margin-top:6px}
   summary{cursor:pointer;color:var(--pri);font-size:13px;font-weight:600;user-select:none}
   .hint{font-size:11px;color:var(--mut);margin-top:6px;line-height:1.6}
@@ -47,6 +52,12 @@
   .msg.err{background:#fef2f2;color:var(--err);border:1px solid #fecaca}
   .msg.ok{background:#f0fdf4;color:var(--ok);border:1px solid #bbf7d0}
   .msg.info{background:var(--soft);color:var(--pri2);border:1px solid #ddd2ff}
+  /* 供应商列表 */
+  .prow-item{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;
+    border:1px solid var(--line);border-radius:10px;margin-bottom:8px;background:#fff}
+  .pinfo{font-size:12.5px;word-break:break-all;line-height:1.5}
+  .pinfo b{font-size:13.5px}
+  .pbtns{display:flex;gap:8px;flex-shrink:0}
   /* 参数区 */
   .prow{margin-top:14px}
   .prow:first-child{margin-top:0}
@@ -104,27 +115,54 @@
 <div class="wrap">
   <h1>Image Fantasy</h1>
   <div class="sub">
-    <span>自托管 · 兼容任意 OpenAI 风格图像接口 · 实时进度 · 点图看大图</span>
+    <span>自托管 · 多供应商 · 实时进度 · 点图看大图</span>
     <span id="svc" class="svc"><i></i>检测中…</span>
   </div>
 
   <div class="card">
+    <h2>模型</h2>
     <div class="grid">
-      <div><label>API Key（只存在浏览器里，不落盘）</label><input id="key" type="password" placeholder="sk-... 或你的代理 Key"></div>
-      <div><label>Base URL（填到 /v1 为止）</label><input id="base" placeholder="你的接口地址，如 https://api.openai.com/v1"></div>
+      <div><label>供应商</label><select id="selProvider"></select></div>
+      <div><label>模型</label><select id="selModel"></select></div>
     </div>
-    <div class="grid" style="margin-top:12px">
-      <div><label>模型名（按你的渠道实际 ID 填）</label><input id="model" placeholder="按你的渠道填，如 gpt-image-1"></div>
-      <div><label>模式</label>
-        <div class="seg" id="modeSeg">
-          <button data-m="generate" class="on">文生图</button>
-          <button data-m="edit">参考图编辑</button>
-        </div>
+    <div class="hint" id="modelHint"></div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn ghost sm" id="manageBtn">管理供应商…</button>
+    </div>
+  </div>
+
+  <div class="card hide" id="provCard">
+    <h2>供应商管理</h2>
+    <div id="provList"></div>
+    <div style="margin-top:6px;border-top:1px dashed var(--line);padding-top:14px">
+      <div class="grid3">
+        <div><label>名称（随便起）</label><input id="pv_name" placeholder="如 TokenRhythm"></div>
+        <div><label>Base URL（填到 /v1 为止）</label><input id="pv_base" placeholder="https://.../v1"></div>
+        <div><label>API Key（本地渠道可留空）</label><input id="pv_key" type="password" placeholder="sk-...">
+          <label class="chk" style="margin-top:6px"><input type="checkbox" id="pv_showkey"> 显示</label></div>
       </div>
+      <div style="margin-top:12px">
+        <label>模型列表（每行一个）</label>
+        <textarea id="pv_models" placeholder="gpt-image-1&#10;dall-e-3"></textarea>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn sm" id="pv_save">添加供应商</button>
+        <button class="btn ghost sm" id="pv_fetch">从接口拉取模型列表</button>
+        <button class="btn ghost sm hide" id="pv_cancel">取消编辑</button>
+        <span class="kbd" id="pv_state"></span>
+      </div>
+      <div class="hint">Key 只存在你本机（data/providers.json，不会被 git 收录）；页面加载后只需选供应商和模型即可生成。</div>
     </div>
   </div>
 
   <div class="card">
+    <div class="row" style="margin:0 0 10px">
+      <span class="lbl2">模式</span>
+      <div class="seg" id="modeSeg">
+        <button data-m="generate" class="on">文生图</button>
+        <button data-m="edit">参考图编辑</button>
+      </div>
+    </div>
     <label>提示词 Prompt</label>
     <textarea id="prompt" placeholder="描述你想要的画面..."></textarea>
     <div id="editBox" class="hide" style="margin-top:12px">
@@ -231,6 +269,10 @@ let wmVal = false;           // 是否加水印
 let running = false, ctrl = null, t0 = 0, timerId = null;
 const SIZE_PRESETS = ['1024x1024','1024x1536','1536x1024','2048x2048'];
 
+let providers = [];                          // 供应商列表（服务端）
+let editingId = null;                        // 正在编辑的供应商 id（null = 新增）
+let wantSel = { provider:'', model:'' };     // 待恢复的选择（来自本地记忆）
+
 /* ---------- 小工具 ---------- */
 function showErr(msg){ $('res').innerHTML = '<div class="msg err">' + esc(msg) + '</div>'; }
 function showInfo(msg){ $('res').innerHTML = '<div class="msg info">' + esc(msg) + '</div>'; }
@@ -275,20 +317,21 @@ $('p_size').addEventListener('input', () => {
   if(!$('sizeCustomWrap').classList.contains('hide')) sizeVal = $('p_size').value.trim();
 });
 
-/* ---------- 本地配置持久化（不含 Key） ---------- */
+/* ---------- 本地配置持久化（不含 Key；Key 在服务端） ---------- */
 const CFG_KEY = 'image-fantasy-cfg-v1';
 function saveCfg(){
-  const cfg = { base:$('base').value, model:$('model').value, prompt:$('prompt').value,
-    size:sizeVal, wm:wmVal, n:$('p_n').value,
-    format:$('p_format').value, resp:$('p_resp').value, quality:$('p_quality').value,
-    style:$('p_style').value, bg:$('p_background').value, comp:$('p_comp').value };
+  const cfg = { selProvider: $('selProvider').value || wantSel.provider,
+    selModel: $('selModel').value || wantSel.model,
+    prompt: $('prompt').value, size: sizeVal, wm: wmVal, n: $('p_n').value,
+    format: $('p_format').value, resp: $('p_resp').value, quality: $('p_quality').value,
+    style: $('p_style').value, bg: $('p_background').value, comp: $('p_comp').value };
   try{ localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); }catch(e){}
 }
 function loadCfg(){
   let cfg = {};
   try{ cfg = JSON.parse(localStorage.getItem(CFG_KEY) || '{}'); }catch(e){}
-  if(cfg.base) $('base').value = cfg.base;
-  if(cfg.model) $('model').value = cfg.model;
+  wantSel.provider = cfg.selProvider || '';
+  wantSel.model = cfg.selModel || '';
   if(cfg.prompt) $('prompt').value = cfg.prompt;
   ['format','resp','quality','style','bg','comp','n'].forEach(k => { if(cfg[k] !== undefined) $('p_' + k).value = cfg[k]; });
   if(cfg.size){
@@ -297,7 +340,161 @@ function loadCfg(){
   }
   if(cfg.wm){ selectChip('#wmChips', 'on'); }
 }
-['base','model','prompt','p_format','p_resp','p_quality','p_style','p_background','p_comp','p_n'].forEach(id => {
+
+/* ---------- 供应商与模型 ---------- */
+async function loadProviders(){
+  try{
+    const r = await fetch('/api/providers');
+    providers = await r.json();
+    if(!Array.isArray(providers)) providers = [];
+  }catch(e){ providers = []; }
+  renderProviderSelects();
+  renderProvList();
+  saveCfg();
+}
+function renderProviderSelects(){
+  const selP = $('selProvider'), selM = $('selModel');
+  const curP = selP.value || wantSel.provider;
+  const curM = selM.value || wantSel.model;
+  selP.innerHTML = '';
+  if(!providers.length){
+    selP.innerHTML = '<option value="">（暂无供应商）</option>';
+    selM.innerHTML = '<option value="">—</option>';
+    $('modelHint').textContent = '还没有供应商——下面填好「名称 / 地址 / Key」点「添加供应商」即可，之后这里直接选模型用。';
+    $('provCard').classList.remove('hide');
+    $('manageBtn').textContent = '收起管理';
+    return;
+  }
+  $('modelHint').textContent = '选好供应商和模型就能开跑；换渠道、改 Key 点「管理供应商」。';
+  providers.forEach(p => {
+    const o = document.createElement('option');
+    o.value = p.id; o.textContent = p.name;
+    selP.appendChild(o);
+  });
+  const targetP = providers.some(p => p.id === curP) ? curP : providers[0].id;
+  selP.value = targetP;
+  fillModels(targetP, curM);
+}
+function fillModels(pid, prefer){
+  const selM = $('selModel'); selM.innerHTML = '';
+  const p = providers.find(x => x.id === pid);
+  const models = (p && p.models) || [];
+  if(!models.length){ selM.innerHTML = '<option value="">（该供应商暂无模型）</option>'; return; }
+  models.forEach(m => {
+    const o = document.createElement('option');
+    o.value = m; o.textContent = m;
+    selM.appendChild(o);
+  });
+  if(prefer && models.includes(prefer)) selM.value = prefer;
+}
+function renderProvList(){
+  const el = $('provList'); el.innerHTML = '';
+  if(!providers.length){
+    el.innerHTML = '<div class="empty" style="padding:6px 0">还没有供应商，用下面的表单添加第一个。</div>';
+    return;
+  }
+  providers.forEach(p => {
+    const row = document.createElement('div'); row.className = 'prow-item';
+    const info = document.createElement('div'); info.className = 'pinfo';
+    const nm = document.createElement('b'); nm.textContent = p.name;
+    info.appendChild(nm);
+    info.appendChild(document.createTextNode(' · ' + p.base + ' · ' + ((p.models || []).length) + ' 个模型' + (p.key ? '' : ' · 无 Key')));
+    const btns = document.createElement('div'); btns.className = 'pbtns';
+    const bEdit = document.createElement('button'); bEdit.className = 'btn ghost sm'; bEdit.textContent = '编辑';
+    bEdit.onclick = () => startEdit(p);
+    const bDel = document.createElement('button'); bDel.className = 'btn ghost sm'; bDel.textContent = '删除';
+    bDel.onclick = () => removeProv(p);
+    btns.append(bEdit, bDel);
+    row.append(info, btns);
+    el.appendChild(row);
+  });
+}
+function startEdit(p){
+  editingId = p.id;
+  $('pv_name').value = p.name || '';
+  $('pv_base').value = p.base || '';
+  $('pv_key').value = p.key || '';
+  $('pv_models').value = (p.models || []).join('\n');
+  $('pv_save').textContent = '保存修改';
+  $('pv_cancel').classList.remove('hide');
+  $('pv_state').textContent = '正在编辑：' + p.name;
+  $('provCard').classList.remove('hide');
+  $('manageBtn').textContent = '收起管理';
+  $('provCard').scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+function resetProvForm(){
+  editingId = null;
+  ['pv_name','pv_base','pv_key','pv_models'].forEach(id => { $(id).value = ''; });
+  $('pv_showkey').checked = false; $('pv_key').type = 'password';
+  $('pv_save').textContent = '添加供应商';
+  $('pv_cancel').classList.add('hide');
+  $('pv_state').textContent = '';
+}
+async function saveProv(){
+  const name = $('pv_name').value.trim();
+  const base = $('pv_base').value.trim();
+  const key = $('pv_key').value.trim();
+  const models = $('pv_models').value.split('\n').map(s => s.trim()).filter(Boolean);
+  if(!name || !base){ $('pv_state').textContent = '名称和 Base URL 必填。'; return; }
+  const body = { name, base, key, models };
+  let r;
+  if(editingId){
+    r = await fetch('/api/providers/' + encodeURIComponent(editingId), {
+      method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+  }else{
+    r = await fetch('/api/providers', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+  }
+  if(!r.ok){
+    const d = await r.json().catch(() => ({}));
+    $('pv_state').textContent = '保存失败：' + (d.error || ('HTTP ' + r.status)); return;
+  }
+  const saved = await r.json().catch(() => ({}));
+  resetProvForm();
+  await loadProviders();
+  if(saved && saved.id && providers.some(p => p.id === saved.id)){
+    $('selProvider').value = saved.id;
+    fillModels(saved.id);
+    saveCfg();
+  }
+  $('pv_state').textContent = '已保存 ✓';
+  setTimeout(() => { if($('pv_state').textContent === '已保存 ✓') $('pv_state').textContent = ''; }, 2500);
+}
+async function fetchModels(){
+  const base = $('pv_base').value.trim();
+  const key = $('pv_key').value.trim();
+  if(!base){ $('pv_state').textContent = '先填 Base URL。'; return; }
+  $('pv_state').textContent = '拉取中…';
+  try{
+    const r = await fetch('/api/fetch-models', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ base, key }) });
+    const d = await r.json().catch(() => ({}));
+    if(!r.ok){ $('pv_state').textContent = '拉取失败：' + (d.error || ('HTTP ' + r.status)); return; }
+    const list = d.models || [];
+    if(!list.length){ $('pv_state').textContent = '接口没有返回模型，手动填吧。'; return; }
+    $('pv_models').value = list.join('\n');
+    $('pv_state').textContent = '已拉取 ' + list.length + ' 个模型（可自行删减再保存）';
+  }catch(e){ $('pv_state').textContent = '拉取失败：' + e.message; }
+}
+async function removeProv(p){
+  if(!confirm('删除供应商「' + p.name + '」？（不影响已生成的图片）')) return;
+  await fetch('/api/providers/' + encodeURIComponent(p.id), { method:'DELETE' });
+  if(editingId === p.id) resetProvForm();
+  await loadProviders();
+}
+
+/* ---------- 供应商管理面板交互 ---------- */
+$('manageBtn').onclick = () => {
+  const hidden = $('provCard').classList.toggle('hide');
+  $('manageBtn').textContent = hidden ? '管理供应商…' : '收起管理';
+};
+$('pv_save').onclick = saveProv;
+$('pv_fetch').onclick = fetchModels;
+$('pv_cancel').onclick = resetProvForm;
+$('pv_showkey').onchange = () => { $('pv_key').type = $('pv_showkey').checked ? 'text' : 'password'; };
+$('selProvider').onchange = () => { fillModels($('selProvider').value); saveCfg(); };
+$('selModel').onchange = saveCfg;
+['prompt','p_format','p_resp','p_quality','p_style','p_background','p_comp','p_n'].forEach(id => {
   $(id).addEventListener('change', saveCfg);
 });
 
@@ -356,9 +553,8 @@ function buildPayload(){
   const size = $('sizeCustomWrap').classList.contains('hide') ? sizeVal : ($('p_size').value.trim() || '1024x1024');
   if(!/^\d{2,5}x\d{2,5}$/.test(size)) throw new Error('尺寸格式应为 宽x高，如 1024x1024');
   return {
-    key: $('key').value.trim(),
-    base: $('base').value.trim().replace(/\/+$/,''),
-    model: $('model').value.trim() || 'gpt-image-1',
+    provider_id: $('selProvider').value,
+    model: $('selModel').value.trim(),
     mode,
     prompt: $('prompt').value,
     params: {
@@ -426,9 +622,13 @@ async function go(){
   const btn = $('go'), cancelBtn = $('cancelBtn');
 
   // ---- 前置校验 ----
-  if(!$('key').value.trim()){ showErr('先填 API Key。'); $('key').focus(); return; }
-  if(!$('base').value.trim()){ showErr('先填 Base URL（你的接口地址）。'); $('base').focus(); return; }
-  if(!$('model').value.trim()){ showErr('先填模型名（按你的渠道）。'); $('model').focus(); return; }
+  const pid = $('selProvider').value;
+  if(!pid || !providers.some(p => p.id === pid)){
+    showErr('先选择一个供应商（没有的话点「管理供应商」添加）。'); return;
+  }
+  if(!$('selModel').value.trim()){
+    showErr('该供应商暂无模型——点「管理供应商」，给它在「模型列表」里加上几个。'); return;
+  }
   let payload;
   try{ payload = buildPayload(); }
   catch(e){ showErr(e.message.indexOf('JSON') >= 0 ? ('额外参数不是合法 JSON：' + e.message) : e.message); return; }
@@ -571,6 +771,7 @@ $('go').onclick = go;
 $('cancelBtn').onclick = () => { if(ctrl) ctrl.abort(); };
 
 loadCfg();
+loadProviders();
 refreshSvc();
 setInterval(refreshSvc, 15000);
 loadGallery();
