@@ -5,8 +5,8 @@ Image Fantasy —— 自托管图像生成 Web 应用（零依赖，仅用 Pytho
 
 特性：
   - 对接任意 OpenAI 兼容图像 API（gpt-image-1 及各类兼容渠道 / 代理）
-  - 全参数暴露：prompt / size / n / output_format / output_compression /
-    response_format / watermark(水印开关) / 参考图编辑(edit)
+  - 全参数暴露：prompt / size(512–4096, 32倍数, ≤3:1, 或 auto) / n / output_format /
+    output_compression / response_format / watermark / prompt_extend(提示词润色) / 参考图编辑(edit)
   - GPT-Image 兼容参数(quality/style/background)透传 + 任意额外参数 JSON 透传
   - 供应商与模型管理：供应商（Base URL + Key + 模型清单）持久化在 data/providers.json，
     前端只需选择供应商与模型；生成请求由服务端注入凭据
@@ -264,6 +264,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         # watermark 显式传布尔：False = 去水印（是否生效取决于上游渠道）
         if params.get("watermark") is not None:
             payload["watermark"] = bool(params["watermark"])
+        # prompt_extend：提示词润色开关（部分渠道支持，如参考文档默认 true）
+        if params.get("prompt_extend") is not None:
+            payload["prompt_extend"] = bool(params["prompt_extend"])
         # GPT-Image 兼容参数（其他模型可忽略）
         for k in ("quality", "style", "background"):
             if params.get(k): payload[k] = params[k]
