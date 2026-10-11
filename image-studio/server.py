@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-图像工作室 —— 自托管图像生成 Web 应用（零依赖，仅用 Python 标准库）
+Image Fantasy —— 自托管图像生成 Web 应用（零依赖，仅用 Python 标准库）
 
 特性：
   - 对接任意 OpenAI 兼容图像 API（gpt-image-1 及各类兼容渠道 / 代理）
@@ -77,7 +77,7 @@ def save_image(item, idx, out_fmt):
         data = base64.b64decode(item["b64_json"])
     elif item.get("url"):
         url = item["url"]
-        req = urllib.request.Request(url, headers={"User-Agent": "image-studio"})
+        req = urllib.request.Request(url, headers={"User-Agent": "image-fantasy"})
         with urllib.request.urlopen(req, timeout=60) as resp:
             data = resp.read()
             ct = resp.headers.get("Content-Type", "")
@@ -315,7 +315,7 @@ class ThreadingHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
 if __name__ == "__main__":
     os.chdir(BASE_DIR)
     with ThreadingHTTPServer(("0.0.0.0", PORT), Handler) as httpd:
-        print("图像工作室已启动 ->  http://0.0.0.0:%d" % PORT)
+        print("Image Fantasy 已启动 ->  http://0.0.0.0:%d" % PORT)
         print("图库目录: %s" % DATA_DIR)
         print("按 Ctrl+C 退出。")
         try:

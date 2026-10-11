@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>图像工作室</title>
+<title>Image Fantasy</title>
 <style>
   :root{ --bg:#f5f7fa; --card:#fff; --line:#e4e8ee; --txt:#1f2329; --mut:#8a9099;
          --pri:#6d3bf5; --pri2:#5526d6; --ok:#16a34a; --err:#dc2626; --soft:#f1ecff; }
@@ -102,7 +102,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>图像工作室</h1>
+  <h1>Image Fantasy</h1>
   <div class="sub">
     <span>自托管 · 兼容任意 OpenAI 风格图像接口 · 实时进度 · 点图看大图</span>
     <span id="svc" class="svc"><i></i>检测中…</span>
@@ -276,7 +276,7 @@ $('p_size').addEventListener('input', () => {
 });
 
 /* ---------- 本地配置持久化（不含 Key） ---------- */
-const CFG_KEY = 'image-studio-cfg-v1';
+const CFG_KEY = 'image-fantasy-cfg-v1';
 function saveCfg(){
   const cfg = { base:$('base').value, model:$('model').value, prompt:$('prompt').value,
     size:sizeVal, wm:wmVal, n:$('p_n').value,

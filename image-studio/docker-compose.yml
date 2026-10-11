@@ -1,8 +1,8 @@
 services:
-  image-studio:
+  image-fantasy:
     build: .
-    image: image-studio
-    container_name: image-studio
+    image: image-fantasy
+    container_name: image-fantasy
     restart: unless-stopped
     ports:
       - "8080:8080"
