@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SenseNova 图像工作室</title>
+<title>图像工作室</title>
 <style>
   :root{ --bg:#f5f7fa; --card:#fff; --line:#e4e8ee; --txt:#1f2329; --mut:#8a9099;
          --pri:#6d3bf5; --pri2:#5526d6; --ok:#16a34a; --err:#dc2626; --soft:#f1ecff; }
@@ -102,19 +102,19 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>SenseNova 图像工作室</h1>
+  <h1>图像工作室</h1>
   <div class="sub">
-    <span>自托管 · 默认参数开箱即用 · 实时进度 · 点图看大图</span>
+    <span>自托管 · 兼容任意 OpenAI 风格图像接口 · 实时进度 · 点图看大图</span>
     <span id="svc" class="svc"><i></i>检测中…</span>
   </div>
 
   <div class="card">
     <div class="grid">
       <div><label>API Key（只存在浏览器里，不落盘）</label><input id="key" type="password" placeholder="sk-... 或你的代理 Key"></div>
-      <div><label>Base URL（填到 /v1 为止）</label><input id="base" value="https://token.sensenova.cn/v1"></div>
+      <div><label>Base URL（填到 /v1 为止）</label><input id="base" placeholder="你的接口地址，如 https://api.openai.com/v1"></div>
     </div>
     <div class="grid" style="margin-top:12px">
-      <div><label>模型名（按你的渠道实际 ID 填）</label><input id="model" value="sensenova-u1.5-lite"></div>
+      <div><label>模型名（按你的渠道实际 ID 填）</label><input id="model" placeholder="按你的渠道填，如 gpt-image-1"></div>
       <div><label>模式</label>
         <div class="seg" id="modeSeg">
           <button data-m="generate" class="on">文生图</button>
@@ -160,7 +160,7 @@
     <details style="margin-top:14px">
       <summary>高级参数（一般不用动）</summary>
       <div class="grid3" style="margin-top:12px">
-        <div><label>n（SenseNova 固定 1）</label><input id="p_n" type="number" value="1" readonly></div>
+        <div><label>n（生成张数；部分渠道仅支持 1）</label><input id="p_n" type="number" min="1" max="10" value="1"></div>
         <div><label>output_format（图片格式）</label>
           <select id="p_format"><option value="png" selected>png</option><option value="jpeg">jpeg</option><option value="webp">webp</option><option value="">— 不传 —</option></select>
         </div>
@@ -182,9 +182,9 @@
       </div>
       <div style="margin-top:12px">
         <label>额外参数（JSON，原样透传给上游，可塞任意专属字段）</label>
-        <textarea id="p_extra" placeholder='例如：{ "think": true, "seed": 42 }'></textarea>
+        <textarea id="p_extra" placeholder='例如：{ "seed": 42 }'></textarea>
       </div>
-      <div class="hint">白话版：output_format=存成什么格式；response_format=上游用"链接"还是"直塞图片数据"（b64 更不容易丢图）；quality/style/background=GPT-Image 风格参数，SenseNova 大多忽略；留空 = 不发送该参数。</div>
+      <div class="hint">白话版：output_format=存成什么格式；response_format=上游用"链接"还是"直塞图片数据"（b64 更不容易丢图）；quality/style/background=GPT-Image 风格参数，部分渠道会忽略；留空 = 不发送该参数。</div>
     </details>
   </div>
 
@@ -276,10 +276,10 @@ $('p_size').addEventListener('input', () => {
 });
 
 /* ---------- 本地配置持久化（不含 Key） ---------- */
-const CFG_KEY = 'sn-studio-cfg-v1';
+const CFG_KEY = 'image-studio-cfg-v1';
 function saveCfg(){
   const cfg = { base:$('base').value, model:$('model').value, prompt:$('prompt').value,
-    size:sizeVal, wm:wmVal,
+    size:sizeVal, wm:wmVal, n:$('p_n').value,
     format:$('p_format').value, resp:$('p_resp').value, quality:$('p_quality').value,
     style:$('p_style').value, bg:$('p_background').value, comp:$('p_comp').value };
   try{ localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); }catch(e){}
@@ -290,14 +290,14 @@ function loadCfg(){
   if(cfg.base) $('base').value = cfg.base;
   if(cfg.model) $('model').value = cfg.model;
   if(cfg.prompt) $('prompt').value = cfg.prompt;
-  ['format','resp','quality','style','bg','comp'].forEach(k => { if(cfg[k] !== undefined) $('p_' + k).value = cfg[k]; });
+  ['format','resp','quality','style','bg','comp','n'].forEach(k => { if(cfg[k] !== undefined) $('p_' + k).value = cfg[k]; });
   if(cfg.size){
     if(SIZE_PRESETS.includes(cfg.size)){ selectChip('#sizeChips', cfg.size); }
     else { selectChip('#sizeChips', 'custom'); $('p_size').value = cfg.size; sizeVal = cfg.size; }
   }
   if(cfg.wm){ selectChip('#wmChips', 'on'); }
 }
-['base','model','prompt','p_format','p_resp','p_quality','p_style','p_background','p_comp'].forEach(id => {
+['base','model','prompt','p_format','p_resp','p_quality','p_style','p_background','p_comp','p_n'].forEach(id => {
   $(id).addEventListener('change', saveCfg);
 });
 
@@ -358,11 +358,11 @@ function buildPayload(){
   return {
     key: $('key').value.trim(),
     base: $('base').value.trim().replace(/\/+$/,''),
-    model: $('model').value.trim() || 'sensenova-u1.5-lite',
+    model: $('model').value.trim() || 'gpt-image-1',
     mode,
     prompt: $('prompt').value,
     params: {
-      size, n: 1,
+      size, n: Math.max(1, parseInt($('p_n').value, 10) || 1),
       output_format: $('p_format').value,
       response_format: $('p_resp').value,
       quality: $('p_quality').value,
@@ -427,6 +427,8 @@ async function go(){
 
   // ---- 前置校验 ----
   if(!$('key').value.trim()){ showErr('先填 API Key。'); $('key').focus(); return; }
+  if(!$('base').value.trim()){ showErr('先填 Base URL（你的接口地址）。'); $('base').focus(); return; }
+  if(!$('model').value.trim()){ showErr('先填模型名（按你的渠道）。'); $('model').focus(); return; }
   let payload;
   try{ payload = buildPayload(); }
   catch(e){ showErr(e.message.indexOf('JSON') >= 0 ? ('额外参数不是合法 JSON：' + e.message) : e.message); return; }

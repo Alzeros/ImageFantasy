@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SenseNova 图像工作室 —— 自托管图像生成 Web 应用（零依赖，仅用 Python 标准库）
+图像工作室 —— 自托管图像生成 Web 应用（零依赖，仅用 Python 标准库）
 
 特性：
-  - 对接 SenseNova U1.5（商汤日日新）OpenAI 兼容图像 API
-  - 全参数暴露：prompt / size(任意32倍数, 支持2K/4K) / n(锁1) / output_format /
-    output_compression / response_format / watermark(水印开关) / 参考图编辑(edit)
+  - 对接任意 OpenAI 兼容图像 API（gpt-image-1 及各类兼容渠道 / 代理）
+  - 全参数暴露：prompt / size / n / output_format / output_compression /
+    response_format / watermark(水印开关) / 参考图编辑(edit)
   - GPT-Image 兼容参数(quality/style/background)透传 + 任意额外参数 JSON 透传
   - 实时进度：/api/generate 以 NDJSON 分块流式返回阶段事件
     （accepted → upstream → saving → done / error），前端可显示生成进度
@@ -77,7 +77,7 @@ def save_image(item, idx, out_fmt):
         data = base64.b64decode(item["b64_json"])
     elif item.get("url"):
         url = item["url"]
-        req = urllib.request.Request(url, headers={"User-Agent": "sensenova-studio"})
+        req = urllib.request.Request(url, headers={"User-Agent": "image-studio"})
         with urllib.request.urlopen(req, timeout=60) as resp:
             data = resp.read()
             ct = resp.headers.get("Content-Type", "")
@@ -198,8 +198,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._send(400, {"error": "请求解析失败: " + str(e)}); return
 
         key = (data.get("key") or "").strip()
-        base = (data.get("base") or "https://token.sensenova.cn/v1").strip().rstrip("/")
-        model = data.get("model") or "sensenova-u1.5-lite"
+        base = (data.get("base") or "https://api.openai.com/v1").strip().rstrip("/")
+        model = data.get("model") or "gpt-image-1"
         mode = data.get("mode") or "generate"
         prompt = data.get("prompt") or ""
         params = data.get("params") or {}
@@ -225,7 +225,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 payload["output_compression"] = max(0, min(100, int(params["output_compression"])))
             except Exception:
                 pass
-        # n：SenseNova 仅支持 1
+        # n：默认 1；部分渠道仅支持 1
         try:
             payload["n"] = max(1, int(params.get("n", 1) or 1))
         except Exception:
@@ -315,7 +315,7 @@ class ThreadingHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
 if __name__ == "__main__":
     os.chdir(BASE_DIR)
     with ThreadingHTTPServer(("0.0.0.0", PORT), Handler) as httpd:
-        print("SenseNova 图像工作室已启动 ->  http://0.0.0.0:%d" % PORT)
+        print("图像工作室已启动 ->  http://0.0.0.0:%d" % PORT)
         print("图库目录: %s" % DATA_DIR)
         print("按 Ctrl+C 退出。")
         try:

@@ -1,8 +1,8 @@
 services:
-  sensenova-studio:
+  image-studio:
     build: .
-    image: sensenova-image-studio
-    container_name: sensenova-studio
+    image: image-studio
+    container_name: image-studio
     restart: unless-stopped
     ports:
       - "8080:8080"
