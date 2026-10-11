@@ -10,3 +10,6 @@ image-studio/data/
 
 # 环境变量 / 密钥
 .env
+
+# WorkBuddy 工作数据（本地记忆等，不入库）
+.workbuddy/
