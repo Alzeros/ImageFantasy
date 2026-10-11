@@ -6,8 +6,10 @@ SenseNova 图像工作室 —— 自托管图像生成 Web 应用（零依赖，
 特性：
   - 对接 SenseNova U1.5（商汤日日新）OpenAI 兼容图像 API
   - 全参数暴露：prompt / size(任意32倍数, 支持2K/4K) / n(锁1) / output_format /
-    response_format / watermark(去水印开关) / 参考图编辑(edit)
+    output_compression / response_format / watermark(水印开关) / 参考图编辑(edit)
   - GPT-Image 兼容参数(quality/style/background)透传 + 任意额外参数 JSON 透传
+  - 实时进度：/api/generate 以 NDJSON 分块流式返回阶段事件
+    （accepted → upstream → saving → done / error），前端可显示生成进度
   - 服务端图库持久化：生成的图像落盘到 data/images，索引存 data/gallery.json，
     重启不丢；前端可按图库回看、删除
   - 单文件后端 + 静态前端，Docker 一键部署
@@ -90,6 +92,8 @@ def save_image(item, idx, out_fmt):
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
     def _send(self, code, obj=None, ctype="application/json", body=None):
         if body is None:
             body = json.dumps(obj, ensure_ascii=False).encode("utf-8") if obj is not None else b""
@@ -111,6 +115,26 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
+
+    # ---- NDJSON 流式响应辅助（手动实现 chunked 传输） ----
+
+    def _start_stream(self):
+        self.close_connection = True
+        self.send_response(200)
+        self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Transfer-Encoding", "chunked")
+        self.send_header("Connection", "close")
+        self.end_headers()
+
+    def _emit(self, obj):
+        line = (json.dumps(obj, ensure_ascii=False) + "\n").encode("utf-8")
+        self.wfile.write(("%X\r\n" % len(line)).encode("ascii") + line + b"\r\n")
+        self.wfile.flush()
+
+    def _end_stream(self):
+        self.wfile.write(b"0\r\n\r\n")
+        self.wfile.flush()
 
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
@@ -135,6 +159,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._send_file(fpath, ctype)
         elif p == "/api/gallery":
             self._send(200, load_gallery())
+        elif p == "/api/ping":
+            self._send(200, {"ok": True, "time": int(time.time() * 1000)})
         else:
             self._send(404, {"error": "not found"})
 
@@ -181,21 +207,24 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
         if not key:
             self._send(400, {"error": "缺少 API Key"}); return
-        if not prompt and mode != "edit":
-            # edit 模式下 prompt 可省略，但至少要有一张参考图
-            pass
 
         # 构造上游请求体
         payload = {"model": model, "prompt": prompt}
         if params.get("size"): payload["size"] = params["size"]
         if params.get("output_format"): payload["output_format"] = params["output_format"]
         if params.get("response_format"): payload["response_format"] = params["response_format"]
-        # watermark 仅 SenseNova 用；显式传布尔
-        if "watermark" in params and params["watermark"] is not None:
+        # watermark 显式传布尔：False = 去水印（是否生效取决于上游渠道）
+        if params.get("watermark") is not None:
             payload["watermark"] = bool(params["watermark"])
         # GPT-Image 兼容参数（其他模型可忽略）
         for k in ("quality", "style", "background"):
             if params.get(k): payload[k] = params[k]
+        # 压缩率（仅 jpeg/webp 有效）
+        if params.get("output_compression") not in (None, ""):
+            try:
+                payload["output_compression"] = max(0, min(100, int(params["output_compression"])))
+            except Exception:
+                pass
         # n：SenseNova 仅支持 1
         try:
             payload["n"] = max(1, int(params.get("n", 1) or 1))
@@ -219,39 +248,61 @@ class Handler(http.server.BaseHTTPRequestHandler):
             headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"},
             method="POST",
         )
-        try:
-            with urllib.request.urlopen(req, timeout=180) as resp:
-                upstream = json.loads(resp.read().decode("utf-8"))
-        except urllib.error.HTTPError as e:
-            try:
-                err = json.loads(e.read().decode("utf-8"))
-            except Exception:
-                err = {"error": e.read().decode("utf-8") or ("HTTP " + str(e.code))}
-            self._send(e.code, err)
-            return
-        except Exception as e:
-            self._send(500, {"error": str(e)})
-            return
 
-        items = upstream.get("data") or []
-        out_fmt = params.get("output_format")
-        saved = []
-        gallery = load_gallery()
-        for i, it in enumerate(items):
-            filename, local_url = save_image(it, i, out_fmt)
-            if not filename:
-                continue
-            gid = filename.rsplit(".", 1)[0]
-            entry = {
-                "id": gid, "filename": filename, "url": local_url,
-                "prompt": prompt, "model": model,
-                "size": params.get("size", ""), "output_format": out_fmt or "",
-                "mode": mode, "created": int(time.time() * 1000),
-            }
-            gallery.append(entry)
-            saved.append(entry)
-        save_gallery(gallery)
-        self._send(200, {"created": upstream.get("created"), "usage": upstream.get("usage"), "items": saved})
+        # ---- 以下走 NDJSON 流式响应：阶段事件实时推送给前端 ----
+        self._start_stream()
+        try:
+            try:
+                self._emit({"stage": "accepted", "time": int(time.time() * 1000)})
+                self._emit({"stage": "upstream", "model": model, "endpoint": endpoint})
+                try:
+                    with urllib.request.urlopen(req, timeout=600) as resp:
+                        upstream = json.loads(resp.read().decode("utf-8"))
+                except urllib.error.HTTPError as e:
+                    try:
+                        err = json.loads(e.read().decode("utf-8"))
+                    except Exception:
+                        err = "HTTP " + str(e.code)
+                    self._emit({"stage": "error", "http": e.code, "message": err})
+                    return
+                except Exception as e:
+                    self._emit({"stage": "error", "message": str(e)})
+                    return
+
+                items = upstream.get("data") or []
+                self._emit({"stage": "saving", "count": len(items)})
+                out_fmt = params.get("output_format")
+                saved = []
+                gallery = load_gallery()
+                for i, it in enumerate(items):
+                    filename, local_url = save_image(it, i, out_fmt)
+                    if not filename:
+                        continue
+                    gid = filename.rsplit(".", 1)[0]
+                    entry = {
+                        "id": gid, "filename": filename, "url": local_url,
+                        "prompt": prompt, "model": model,
+                        "size": params.get("size", ""), "output_format": out_fmt or "",
+                        "mode": mode, "created": int(time.time() * 1000),
+                    }
+                    gallery.append(entry)
+                    saved.append(entry)
+                save_gallery(gallery)
+                self._emit({"stage": "done", "created": upstream.get("created"),
+                            "usage": upstream.get("usage"), "items": saved})
+            except (BrokenPipeError, ConnectionResetError):
+                # 前端断开（例如点了取消等待），安静收场
+                pass
+            except Exception as e:
+                try:
+                    self._emit({"stage": "error", "message": str(e)})
+                except Exception:
+                    pass
+        finally:
+            try:
+                self._end_stream()
+            except Exception:
+                pass
 
     def log_message(self, *a):
         pass
