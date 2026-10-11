@@ -306,8 +306,55 @@
 </div>
 
 <script>
+/* 诊断黑匣子（排查环境差异，定位后可删）：捕获 JS 错误 + 启动阶段，异常时顶部显示红条 */
+(function(){
+  window.__boot = 0;
+  function show(msg){
+    try{
+      document.title = '!! JS启动异常 - Image Fantasy';
+      var d = document.getElementById('__diag');
+      if(!d){
+        d = document.createElement('div');
+        d.id = '__diag';
+        d.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:2147483647;background:#7f1d1d;color:#fff;padding:12px 16px;font:12px/1.7 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-all';
+        (document.body || document.documentElement).appendChild(d);
+      }
+      d.textContent = msg;
+    }catch(e){}
+  }
+  window.addEventListener('error', function(e){
+    try{
+      var msg = (e && e.message) ? String(e.message) : '';
+      if(msg){ window.__lastErr = msg + ' @行' + (e.lineno || 0) + ':' + (e.colno || 0); }
+    }catch(err){}
+  }, true);
+  window.addEventListener('unhandledrejection', function(e){
+    try{ window.__lastErr = 'Promise: ' + ((e.reason && e.reason.message) || e.reason); }catch(err){}
+  });
+  setTimeout(function(){
+    try{
+      var boot = window.__boot || 0;
+      var svcEl = document.getElementById('svc');
+      var svcTxt = svcEl ? svcEl.textContent : '(无)';
+      if(boot >= 9 && svcTxt.indexOf('检测中') < 0){ return; }  // 一切正常，不打扰
+      var parts = [];
+      parts.push('启动阶段 __boot=' + boot + '/9');
+      parts.push('服务指示=' + svcTxt);
+      try{ parts.push('AbortSignal.timeout=' + ((typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? '有' : '无')); }catch(e){ parts.push('AbortSignal=异常'); }
+      try{ localStorage.setItem('__diag_t', '1'); localStorage.removeItem('__diag_t'); parts.push('localStorage=可用'); }catch(e){ parts.push('localStorage=被阻止(' + (e && e.name) + ')'); }
+      parts.push('fetch=' + (typeof fetch));
+      parts.push('UA=' + navigator.userAgent);
+      if(window.__lastErr){ parts.push('最后错误=' + window.__lastErr); }
+      show('【诊断】页面脚本未正常启动，请把本红条内容复制或截图发给助手：\n' + parts.join(' ｜ '));
+    }catch(e){}
+  }, 4000);
+})();
+</script>
+
+<script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+window.__boot = 1;
 
 let mode = 'generate';       // generate | edit
 let sizeVal = 'auto';         // 当前尺寸（预设或自定义；auto = 交给上游）
@@ -354,6 +401,7 @@ function showView(v){
 }
 document.querySelectorAll('#navTabs button').forEach(b => { b.onclick = () => showView(b.dataset.v); });
 window.addEventListener('hashchange', () => { showView(location.hash === '#config' ? 'config' : 'gen'); });
+window.__boot = 2;
 
 /* ---------- chips ---------- */
 function wireChips(sel, cb){
@@ -408,12 +456,15 @@ function loadCfg(){
 /* ---------- 供应商与模型 ---------- */
 async function loadProviders(){
   try{
+    window.__boot = 20;
     const r = await fetch('/api/providers');
+    window.__boot = 21;
     const list = await r.json();
     if(!Array.isArray(list)) throw new Error('bad response');
     providers = list;
     providersLoadFailed = false;
   }catch(e){
+    window.__boot = 22;
     providersLoadFailed = true;   // 加载失败不清空已有列表：失败 ≠ 没有数据
   }
   renderProviderSelects();
@@ -623,6 +674,7 @@ $('selModel').onchange = saveCfg;
 ['prompt','p_format','p_resp','p_quality','p_style','p_background','p_comp','p_n'].forEach(id => {
   $(id).addEventListener('change', saveCfg);
 });
+window.__boot = 3;
 
 /* ---------- 模式切换 ---------- */
 document.querySelectorAll('#modeSeg button').forEach(b => {
@@ -648,7 +700,9 @@ $('maskFile').addEventListener('change', () => showThumb($('maskFile'), 'maskThu
 /* ---------- 服务探活 ---------- */
 async function pingOnce(){
   try{
-    const r = await fetch('/api/ping', { cache:'no-store', signal: AbortSignal.timeout(2500) });
+    const opts = { cache:'no-store' };
+    try{ opts.signal = AbortSignal.timeout(2500); }catch(e2){}
+    const r = await fetch('/api/ping', opts);
     const d = await r.json();
     return !!d.ok;
   }catch(e){ return false; }
@@ -907,13 +961,16 @@ document.addEventListener('keydown', e => {
 });
 $('go').onclick = go;
 $('cancelBtn').onclick = () => { if(ctrl) ctrl.abort(); };
+window.__boot = 4;
 
-loadCfg();
-showView(location.hash === '#config' ? 'config' : 'gen');
-loadProviders();
+window.__boot = 5;
+loadCfg(); window.__boot = 6;
+showView(location.hash === '#config' ? 'config' : 'gen'); window.__boot = 7;
+loadProviders(); window.__boot = 8;
 refreshSvc();
 setInterval(refreshSvc, 15000);
 loadGallery();
+window.__boot = 9;
 </script>
 </body>
 </html>

@@ -451,8 +451,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except Exception as e:
             self._send(502, {"error": "拉取失败：%s" % e})
 
-    def log_message(self, *a):
-        pass
+    def log_message(self, fmt, *args):
+        try:
+            ua = (self.headers.get("User-Agent") or "")[:70]
+            print("[req %s] %s  UA=%s" % (self.address_string(), fmt % args, ua), flush=True)
+        except Exception:
+            pass
 
 
 class ThreadingHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
