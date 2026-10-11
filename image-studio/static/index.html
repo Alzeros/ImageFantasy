@@ -129,7 +129,7 @@
     </nav>
   </div>
   <div class="sub">
-    <span>自托管 · 多供应商 · 实时进度 · v8f69adb</span>
+    <span>自托管 · 多供应商 · 实时进度 · v-fix1</span>
     <span id="svc" class="svc"><i></i>检测中…</span>
   </div>
 
@@ -435,7 +435,7 @@ function saveCfg(){
     selModel: $('selModel').value || wantSel.model,
     prompt: $('prompt').value, size: sizeVal, wm: wmVal, pe: peVal, n: $('p_n').value,
     format: $('p_format').value, resp: $('p_resp').value, quality: $('p_quality').value,
-    style: $('p_style').value, bg: $('p_background').value, comp: $('p_comp').value };
+    style: $('p_style').value, background: $('p_background').value, comp: $('p_comp').value };
   try{ localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); }catch(e){}
 }
 function loadCfg(){
@@ -444,7 +444,10 @@ function loadCfg(){
   wantSel.provider = cfg.selProvider || '';
   wantSel.model = cfg.selModel || '';
   if(cfg.prompt) $('prompt').value = cfg.prompt;
-  ['format','resp','quality','style','bg','comp','n'].forEach(k => { if(cfg[k] !== undefined) $('p_' + k).value = cfg[k]; });
+  ['format','resp','quality','style','background','comp','n'].forEach(k => {
+    const el = $('p_' + k);
+    if(el && cfg[k] !== undefined) el.value = cfg[k];
+  });
   if(cfg.size){
     if(SIZE_PRESETS.includes(cfg.size)){ selectChip('#sizeChips', cfg.size); }
     else { selectChip('#sizeChips', 'custom'); $('p_size').value = cfg.size; sizeVal = cfg.size; }
