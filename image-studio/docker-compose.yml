@@ -1,0 +1,14 @@
+services:
+  sensenova-studio:
+    build: .
+    image: sensenova-image-studio
+    container_name: sensenova-studio
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - DATA_DIR=/data
+    volumes:
+      # 图库持久化：生成的图片与索引存在宿主机 ./data，重启不丢
+      - ./data:/data

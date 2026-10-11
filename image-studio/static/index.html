@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SenseNova 图像工作室</title>
+<style>
+  :root{ --bg:#f5f7fa; --card:#fff; --line:#e4e8ee; --txt:#1f2329; --mut:#8a9099;
+         --pri:#6d3bf5; --pri2:#5526d6; --ok:#16a34a; --err:#dc2626; --soft:#f1ecff; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif}
+  .wrap{max-width:1080px;margin:0 auto;padding:22px 18px 60px}
+  h1{font-size:21px;margin:0 0 2px}
+  .sub{color:var(--mut);font-size:12px;margin-bottom:18px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:16px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  label{display:block;font-size:12px;color:var(--mut);margin-bottom:5px}
+  input,select,textarea{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:9px;
+    background:#fff;color:var(--txt);font-size:13px;font-family:inherit}
+  textarea{resize:vertical;min-height:76px}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--pri);box-shadow:0 0 0 3px var(--soft)}
+  .row{display:flex;gap:14px;align-items:center;margin:4px 0 2px;flex-wrap:wrap}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+  .seg button{border:0;background:#fff;padding:8px 18px;cursor:pointer;font-size:13px;color:var(--mut)}
+  .seg button.on{background:var(--pri);color:#fff}
+  .chk{display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--txt);cursor:pointer;user-select:none}
+  .chk input{width:auto}
+  .btn{margin-top:8px;background:var(--pri);color:#fff;border:0;border-radius:10px;padding:12px 22px;
+    font-size:14px;cursor:pointer;font-weight:600}
+  .btn:hover{background:var(--pri2)}
+  .btn:disabled{opacity:.55;cursor:not-allowed}
+  details{margin-top:6px}
+  summary{cursor:pointer;color:var(--pri);font-size:13px;font-weight:600;user-select:none}
+  .hint{font-size:11px;color:var(--mut);margin-top:6px;line-height:1.5}
+  .hide{display:none}
+  .msg{font-size:13px;padding:11px 13px;border-radius:9px;margin-top:12px;white-space:pre-wrap;word-break:break-word}
+  .msg.err{background:#fef2f2;color:var(--err);border:1px solid #fecaca}
+  .msg.ok{background:#f0fdf4;color:var(--ok);border:1px solid #bbf7d0}
+  h2{font-size:15px;margin:0 0 12px}
+  .gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px}
+  .gallery figure{margin:0;border:1px solid var(--line);border-radius:11px;overflow:hidden;background:#fafbfc;position:relative}
+  .gallery img{width:100%;display:block}
+  .gallery figcaption{padding:8px 10px;font-size:11px;color:var(--mut);border-top:1px solid var(--line);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .del{position:absolute;top:7px;right:7px;background:rgba(0,0,0,.55);color:#fff;border:0;border-radius:7px;
+    padding:4px 9px;font-size:11px;cursor:pointer;opacity:0;transition:.15s}
+  .gallery figure:hover .del{opacity:1}
+  .empty{color:var(--mut);font-size:13px;padding:18px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>SenseNova 图像工作室</h1>
+  <div class="sub">自托管 · SenseNova U1.5 专属 · 全参数开放 · 图库服务端持久化</div>
+
+  <div class="card">
+    <div class="grid">
+      <div><label>API Key</label><input id="key" type="password" placeholder="sk-... 或你的代理 Key"></div>
+      <div><label>Base URL（填到 /v1 为止，如 https://token.sensenova.cn/v1）</label><input id="base" value="https://token.sensenova.cn/v1"></div>
+    </div>
+    <div class="grid" style="margin-top:12px">
+      <div><label>模型名（按你的代理实际 ID 填，如 sensenova-u1.5-lite）</label><input id="model" value="sensenova-u1.5-lite"></div>
+      <div><label>模式</label>
+        <div class="seg" id="modeSeg">
+          <button data-m="generate" class="on">文生图 generate</button>
+          <button data-m="edit">参考图编辑 edit</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <label>提示词 Prompt</label>
+    <textarea id="prompt" placeholder="描述你想要的画面..."></textarea>
+    <div id="editBox" class="hide" style="margin-top:12px">
+      <div class="grid">
+        <div><label>参考图 reference image（必填）</label><input id="imgFile" type="file" accept="image/*"></div>
+        <div><label>遮罩 mask（可选）</label><input id="maskFile" type="file" accept="image/*"></div>
+      </div>
+      <div class="hint">edit 模式把参考图以 base64 上传，prompt 可省略；语义取决于上游实现（SenseNova 为参考图编辑）。</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <details open>
+      <summary>参数面板</summary>
+      <div class="grid3" style="margin-top:12px">
+        <div><label>size（宽x高，32 的倍数；支持 2K/4K，如 2048x2048）</label><input id="p_size" value="1024x1024" placeholder="1024x1024"></div>
+        <div><label>n（SenseNova 仅支持 1）</label><input id="p_n" type="number" min="1" max="1" value="1"></div>
+        <div><label>output_format</label>
+          <select id="p_format"><option value="">— 不传 —</option><option value="png" selected>png</option><option value="jpeg">jpeg</option><option value="webp">webp</option></select>
+        </div>
+        <div><label>response_format</label>
+          <select id="p_resp"><option value="b64_json" selected>b64_json（落盘更稳）</option><option value="url">url</option></select>
+        </div>
+        <div><label>quality（GPT-Image 兼容，可忽略）</label>
+          <select id="p_quality"><option value="">— 不传 —</option><option>low</option><option>medium</option><option>high</option></select>
+        </div>
+        <div><label>style（GPT-Image 兼容，可忽略）</label>
+          <select id="p_style"><option value="">— 不传 —</option><option>vivid</option><option>natural</option></select>
+        </div>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <label class="chk"><input id="p_wm" type="checkbox"> 添加官方水印（默认不勾 = 去水印纯图）</label>
+      </div>
+      <div style="margin-top:12px">
+        <label>额外参数（JSON，透传给上游，可放 SenseNova 任意专属字段）</label>
+        <textarea id="p_extra" placeholder='例如：{ "think": true, "seed": 42 }'></textarea>
+      </div>
+      <div class="hint">说明：留空项下拉表示不发送该参数。SenseNova 不认的字段（quality/style）会被上游忽略或报错，取决于代理；用"额外参数"框可塞任何你需要的字段。</div>
+    </details>
+  </div>
+
+  <button class="btn" id="go">生成图像</button>
+  <div id="res"></div>
+
+  <div class="card" style="margin-top:18px">
+    <h2>图库（服务端持久化）</h2>
+    <div id="gallery" class="gallery"></div>
+  </div>
+</div>
+
+<script>
+let mode = "generate";
+document.querySelectorAll('#modeSeg button').forEach(b=>{
+  b.onclick=()=>{
+    document.querySelectorAll('#modeSeg button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on'); mode=b.dataset.m;
+    document.getElementById('editBox').classList.toggle('hide', mode!=='edit');
+    document.getElementById('go').textContent = mode==='edit' ? '重绘图像' : '生成图像';
+  };
+});
+
+function fileToB64(file){
+  return new Promise((res,rej)=>{
+    const r=new FileReader();
+    r.onload=()=>res(r.result);
+    r.onerror=rej;
+    r.readAsDataURL(file);
+  });
+}
+
+function buildParams(){
+  let extra={};
+  const ex=document.getElementById('p_extra').value.trim();
+  if(ex){ try{ extra=JSON.parse(ex); }catch(e){ alert('额外参数不是合法 JSON：'+e.message); throw e; } }
+  return {
+    size: document.getElementById('p_size').value.trim(),
+    n: document.getElementById('p_n').value,
+    output_format: document.getElementById('p_format').value,
+    response_format: document.getElementById('p_resp').value,
+    quality: document.getElementById('p_quality').value,
+    style: document.getElementById('p_style').value,
+    watermark: document.getElementById('p_wm').checked,
+    _extra: extra
+  };
+}
+
+async function go(){
+  const btn=document.getElementById('go'); btn.disabled=true; btn.textContent='请求中…';
+  const res=document.getElementById('res'); res.innerHTML='';
+  const p=buildParams();
+  const payload={
+    key:document.getElementById('key').value.trim(),
+    base:document.getElementById('base').value.trim().replace(/\/+$/,''),
+    model:document.getElementById('model').value.trim()||'sensenova-u1.5-lite',
+    mode,
+    prompt:document.getElementById('prompt').value,
+    params:{ size:p.size, n:p.n, output_format:p.output_format, response_format:p.response_format,
+             quality:p.quality, style:p.style, watermark:p.watermark },
+    extra:p._extra
+  };
+  if(mode==='edit'){
+    const img=document.getElementById('imgFile').files[0];
+    if(!img){ res.innerHTML='<div class="msg err">edit 模式需要上传参考图。</div>'; btn.disabled=false; btn.textContent='重绘图像'; return; }
+    payload.image=await fileToB64(img);
+    const mask=document.getElementById('maskFile').files[0];
+    if(mask) payload.mask=await fileToB64(mask);
+  }
+  try{
+    const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const d=await r.json();
+    if(!r.ok){ const e=(d&&(d.error||d.message))||('HTTP '+r.status); res.innerHTML='<div class="msg err">'+esc(typeof e==='string'?e:JSON.stringify(e,null,2))+'</div>'; return; }
+    const n=(d.items||[]).length;
+    res.innerHTML='<div class="msg ok">成功生成 '+n+' 张，已存入图库。</div>';
+    loadGallery();
+  }catch(err){
+    res.innerHTML='<div class="msg err">请求失败：'+esc(err.message)+'</div>';
+  }finally{
+    btn.disabled=false; btn.textContent = mode==='edit' ? '重绘图像' : '生成图像';
+  }
+}
+
+async function loadGallery(){
+  const el=document.getElementById('gallery');
+  try{
+    const r=await fetch('/api/gallery');
+    const list=await r.json();
+    if(!list.length){ el.innerHTML='<div class="empty">还没有生成记录，去上面生一张吧。</div>'; return; }
+    list.slice().reverse().forEach(it=>{
+      const fig=document.createElement('figure');
+      const img=document.createElement('img'); img.src=it.url; img.alt='';
+      const del=document.createElement('button'); del.className='del'; del.textContent='删除';
+      del.onclick=()=>delItem(it.id);
+      const cap=document.createElement('figcaption');
+      cap.textContent=(it.prompt||'(无提示词)').slice(0,40)+(it.size?(' · '+it.size):'');
+      fig.appendChild(img); fig.appendChild(del); fig.appendChild(cap);
+      el.appendChild(fig);
+    });
+  }catch(e){ el.innerHTML='<div class="empty">图库加载失败。</div>'; }
+}
+
+async function delItem(id){
+  if(!confirm('删除这张图？')) return;
+  await fetch('/api/gallery/'+encodeURIComponent(id),{method:'DELETE'});
+  document.getElementById('gallery').innerHTML='';
+  loadGallery();
+}
+
+function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+document.getElementById('go').onclick=go;
+loadGallery();
+</script>
+</body>
+</html>
