@@ -142,6 +142,9 @@
         <div><label>模型</label><select id="selModel"></select></div>
       </div>
       <div class="hint" id="modelHint"></div>
+      <div class="row hide" id="retryRow" style="margin-top:8px">
+        <button class="btn ghost sm" id="retryBtn">重新加载供应商列表</button>
+      </div>
     </div>
 
     <div class="card">
@@ -288,6 +291,7 @@
         </div>
       </div>
     </div>
+    <div class="hint" style="margin:2px 0 0">数据位置：image-studio/data/ —— providers.json 存供应商与模型、gallery.json 存图库索引、images/ 存图片；重启服务、重新部署都不会丢。</div>
   </section>
 </div>
 
@@ -315,6 +319,8 @@ const SIZE_PRESETS = ['auto','2048x2048','2720x1536','1536x2720','1664x2496','24
 let providers = [];                          // 供应商列表（服务端）
 let editingId = null;                        // 正在编辑的供应商 id（null = 新增）
 let wantSel = { provider:'', model:'' };     // 待恢复的选择（来自本地记忆）
+let providersLoadFailed = false;             // 上次加载是否失败（失败 ≠ 没有数据！）
+let autoRetried = false;                     // 启动加载失败后是否已自动重试过一次
 
 /* ---------- 小工具 ---------- */
 function showErr(msg){ $('res').innerHTML = '<div class="msg err">' + esc(msg) + '</div>'; }
@@ -403,9 +409,13 @@ function loadCfg(){
 async function loadProviders(){
   try{
     const r = await fetch('/api/providers');
-    providers = await r.json();
-    if(!Array.isArray(providers)) providers = [];
-  }catch(e){ providers = []; }
+    const list = await r.json();
+    if(!Array.isArray(list)) throw new Error('bad response');
+    providers = list;
+    providersLoadFailed = false;
+  }catch(e){
+    providersLoadFailed = true;   // 加载失败不清空已有列表：失败 ≠ 没有数据
+  }
   renderProviderSelects();
   renderProvList();
   saveCfg();
@@ -416,12 +426,22 @@ function renderProviderSelects(){
   const curM = selM.value || wantSel.model;
   selP.innerHTML = '';
   if(!providers.length){
+    if(providersLoadFailed){
+      selP.innerHTML = '<option value="">（加载失败）</option>';
+      selM.innerHTML = '<option value="">—</option>';
+      $('modelHint').textContent = '供应商列表加载失败（服务可能正在重启）——你的数据没有丢，稍后点下方按钮重试。';
+      $('retryRow').classList.remove('hide');
+      if(!autoRetried){ autoRetried = true; setTimeout(loadProviders, 3000); }
+      return;
+    }
     selP.innerHTML = '<option value="">（暂无供应商）</option>';
     selM.innerHTML = '<option value="">—</option>';
     $('modelHint').textContent = '还没有供应商——已切到「设置」页，添加第一个后再回来选模型。';
+    $('retryRow').classList.add('hide');
     showView('config');
     return;
   }
+  $('retryRow').classList.add('hide');
   $('modelHint').textContent = '选好供应商和模型就能开跑；渠道与模型管理在「设置」页。';
   providers.forEach(p => {
     const o = document.createElement('option');
@@ -447,7 +467,9 @@ function fillModels(pid, prefer){
 function renderProvList(){
   const el = $('provList'); el.innerHTML = '';
   if(!providers.length){
-    el.innerHTML = '<div class="empty" style="padding:6px 0">还没有供应商，用下面的表单添加第一个。</div>';
+    el.innerHTML = providersLoadFailed
+      ? '<div class="empty" style="padding:6px 0">列表加载失败（服务可能正在重启）——数据没有丢，稍后重试加载即可。</div>'
+      : '<div class="empty" style="padding:6px 0">还没有供应商，用下面的表单添加第一个。</div>';
     return;
   }
   providers.forEach(p => {
@@ -595,6 +617,7 @@ $('fv_apply').onclick = () => {
   $('pv_models').value = uniq.join('\n');
   $('pv_state').textContent = '已应用 ' + uniq.length + ' 个模型（记得点保存）';
 };
+$('retryBtn').onclick = () => { autoRetried = true; loadProviders(); };
 $('selProvider').onchange = () => { fillModels($('selProvider').value); saveCfg(); };
 $('selModel').onchange = saveCfg;
 ['prompt','p_format','p_resp','p_quality','p_style','p_background','p_comp','p_n'].forEach(id => {
