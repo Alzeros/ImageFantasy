@@ -225,6 +225,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._create_provider(); return
         if p == "/api/fetch-models":
             self._fetch_models(); return
+        if p == "/api/inspire":
+            self._generate_inspiration(); return
         if p != "/api/generate":
             self._send(404, {"error": "not found"}); return
         try:
@@ -451,10 +453,103 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except Exception as e:
             self._send(502, {"error": "拉取失败：%s" % e})
 
-    def log_message(self, fmt, *args):
+    def _generate_inspiration(self):
+        body = self._read_json_body()
+        if body is None:
+            self._send(400, {"error": "请求解析失败"}); return
+        provider_id = (body.get("provider_id") or "").strip()
+        model = (body.get("model") or "").strip()
+        user_prompt = (body.get("prompt") or "").strip()
+
+        if not model:
+            self._send(400, {"error": "未指定文本大模型"}); return
+
+        prov = None
+        for it in load_providers():
+            if it.get("id") == provider_id:
+                prov = it
+                break
+        if prov is None and load_providers():
+            prov = load_providers()[0]
+        if prov is None:
+            self._send(400, {"error": "未找到可用的供应商渠道"}); return
+
+        base = (prov.get("base") or "").strip().rstrip("/")
+        key = (prov.get("key") or "").strip()
+        if not base:
+            self._send(400, {"error": "该供应商缺少 Base URL"}); return
+
+        endpoint = base + "/chat/completions"
+
+        few_shots = [
+            "复古咖啡馆门头特写：一块木质招牌上\"深夜食堂\"四个手写体汉字清晰呈现，招牌周围环绕暖黄小灯泡，背景虚化，夜晚氛围，电影级调色",
+            "未来主义赛博朋克雨夜街道，霓虹招牌在湿漉漉的柏油路面上反射绚烂倒影，悬浮飞车穿梭于摩天楼宇之间，8K 超高清电影质感",
+            "新中式水墨风仙山楼阁，孤舟蓑笠翁独钓寒江雪，云雾缭绕其间，传统青绿山水色调，极简留白，大师意境",
+            "微距摄影：清晨草叶上一滴晶莹剔透的水珠，水珠中倒映着初升的微曦朝霞与微小的野花，柔和顶光，景深极浅",
+            "宫崎骏动画风格的夏日乡野车站，阳光透过香樟树叶洒下斑驳光影，远处是蔚蓝的积雨云和金黄的向日葵花海"
+        ]
+
+        system_msg = (
+            "你是一位世界顶尖的 AI 图像生成艺术家和 Prompt 提示词工程师。\n"
+            "你的任务是为文生图模型（如 FLUX, Midjourney, DALL-E, SDXL）构思或扩写一段极具视觉冲击力和画面细节的生图提示词。\n"
+            "要求：\n"
+            "1. 具备生动的视觉细节，涵盖：主体、场景环境、构图视角、光影氛围、材质色彩、镜头景深、艺术风格等；\n"
+            "2. 输出纯中文画面描述（若画面中有招牌文字可保留双引号标注）；\n"
+            "3. 语言凝练精美，画面富有想象力，拒绝俗套；\n"
+            "4. 重要规则：绝对不要输出任何前缀、解释、说明、标号、问候语或引号，仅直接输出最终的提示词正文本身。\n"
+            "高质量提示词样例参考：\n- " + "\n- ".join(few_shots)
+        )
+
+        if user_prompt:
+            user_msg = f"请以用户提供的构思为核心灵感进行艺术扩写与细节丰富，创作一段大师级生图提示词：\n用户构思：{user_prompt}"
+        else:
+            user_msg = "请完全自由发散你的想象力，随机创造一段惊艳动人、风格独特的生图提示词。"
+
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": user_msg}
+            ],
+            "temperature": 0.95,
+            "max_tokens": 400
+        }
+
+        hdrs = {"Content-Type": "application/json"}
+        if key:
+            hdrs["Authorization"] = "Bearer " + key
+
+        req = urllib.request.Request(
+            endpoint,
+            data=json.dumps(payload).encode("utf-8"),
+            headers=hdrs,
+            method="POST"
+        )
+
         try:
-            ua = (self.headers.get("User-Agent") or "")[:70]
-            print("[req %s] %s  UA=%s" % (self.address_string(), fmt % args, ua), flush=True)
+            with urllib.request.urlopen(req, timeout=40) as resp:
+                up = json.loads(resp.read().decode("utf-8"))
+            choices = up.get("choices") or []
+            if not choices:
+                self._send(502, {"error": "模型未返回有效内容"}); return
+            content = choices[0].get("message", {}).get("content", "").strip()
+            content = re.sub(r'^(["\'“”]|提示词[:：])\s*', '', content)
+            content = re.sub(r'["\'“”]\s*$', '', content).strip()
+            self._send(200, {"ok": True, "prompt": content})
+        except urllib.error.HTTPError as e:
+            try:
+                err_data = json.loads(e.read().decode("utf-8"))
+            except Exception:
+                err_data = "HTTP " + str(e.code)
+            self._send(502, {"error": "LLM 接口返回异常: " + str(err_data)})
+        except Exception as e:
+            self._send(502, {"error": "调用 LLM 失败: " + str(e)})
+
+    def log_message(self, fmt, *args):
+        # 请求日志写入 data/server.log（静默，不刷终端）
+        try:
+            with open(os.path.join(DATA_DIR, "server.log"), "a", encoding="utf-8") as f:
+                f.write("[%s] %s\n" % (time.strftime("%m-%d %H:%M:%S"), fmt % args))
         except Exception:
             pass
 
