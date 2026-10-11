@@ -63,6 +63,9 @@
   .pinfo{font-size:12.5px;word-break:break-all;line-height:1.5}
   .pinfo b{font-size:13.5px}
   .pbtns{display:flex;gap:8px;flex-shrink:0}
+  /* 拉取模型勾选面板 */
+  .model-list{max-height:240px;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:4px 12px;padding:2px}
+  .model-list .chk{padding:2px 0}
   /* 参数区 */
   .prow{margin-top:14px}
   .prow:first-child{margin-top:0}
@@ -261,8 +264,21 @@
             <label class="chk" style="margin-top:6px"><input type="checkbox" id="pv_showkey"> 显示</label></div>
         </div>
         <div style="margin-top:12px">
-          <label>模型列表（每行一个）</label>
+          <label>模型列表（每行一个；也可点下方「拉取」后勾选）</label>
           <textarea id="pv_models" placeholder="gpt-image-1&#10;dall-e-3"></textarea>
+        </div>
+        <div id="fetchPanel" class="hide" style="margin-top:10px;border:1px solid var(--line);border-radius:10px;padding:12px;background:#fafbff">
+          <div class="row" style="margin:0 0 8px">
+            <input id="fv_filter" placeholder="过滤模型名…" style="flex:1;min-width:180px">
+            <button class="btn ghost sm" id="fv_all">全选</button>
+            <button class="btn ghost sm" id="fv_none">清空</button>
+            <span class="kbd" id="fv_count">已选 0 / 共 0</span>
+          </div>
+          <div id="fv_list" class="model-list"></div>
+          <div class="row" style="margin-top:10px">
+            <button class="btn sm" id="fv_apply">应用选中（0 个）</button>
+            <button class="btn ghost sm" id="fv_close">关闭</button>
+          </div>
         </div>
         <div class="row" style="margin-top:10px">
           <button class="btn sm" id="pv_save">添加供应商</button>
@@ -459,11 +475,13 @@ function startEdit(p){
   $('pv_save').textContent = '保存修改';
   $('pv_cancel').classList.remove('hide');
   $('pv_state').textContent = '正在编辑：' + p.name;
+  hideFetchPanel();
   $('provCard').scrollIntoView({ behavior:'smooth', block:'nearest' });
 }
 function resetProvForm(){
   editingId = null;
   ['pv_name','pv_base','pv_key','pv_models'].forEach(id => { $(id).value = ''; });
+  hideFetchPanel();
   $('pv_showkey').checked = false; $('pv_key').type = 'password';
   $('pv_save').textContent = '添加供应商';
   $('pv_cancel').classList.add('hide');
@@ -499,6 +517,36 @@ async function saveProv(){
   $('pv_state').textContent = '已保存 ✓';
   setTimeout(() => { if($('pv_state').textContent === '已保存 ✓') $('pv_state').textContent = ''; }, 2500);
 }
+let fetchedModels = [];   // 最近一次拉取的全部模型（供勾选）
+
+function hideFetchPanel(){ $('fetchPanel').classList.add('hide'); fetchedModels = []; }
+function renderFetchPanel(){
+  const current = $('pv_models').value.split('\n').map(s => s.trim()).filter(Boolean);
+  const curSet = new Set(current);
+  const listEl = $('fv_list'); listEl.innerHTML = '';
+  fetchedModels.forEach(m => {
+    const lab = document.createElement('label'); lab.className = 'chk fv-row';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.value = m; cb.checked = curSet.has(m);
+    cb.onchange = updateFvCount;
+    lab.appendChild(cb);
+    lab.appendChild(document.createTextNode(' ' + m));
+    listEl.appendChild(lab);
+  });
+  $('fv_filter').value = '';
+  $('fetchPanel').classList.remove('hide');
+  updateFvCount();
+}
+function updateFvCount(){
+  const boxes = [...document.querySelectorAll('#fv_list input[type=checkbox]')];
+  const checked = boxes.filter(cb => cb.checked).length;
+  $('fv_count').textContent = '已选 ' + checked + ' / 共 ' + boxes.length;
+  $('fv_apply').textContent = '应用选中（' + checked + ' 个）';
+}
+function visibleFvBoxes(){
+  return [...document.querySelectorAll('#fv_list input[type=checkbox]')]
+    .filter(cb => cb.parentElement.style.display !== 'none');
+}
 async function fetchModels(){
   const base = $('pv_base').value.trim();
   const key = $('pv_key').value.trim();
@@ -511,8 +559,9 @@ async function fetchModels(){
     if(!r.ok){ $('pv_state').textContent = '拉取失败：' + (d.error || ('HTTP ' + r.status)); return; }
     const list = d.models || [];
     if(!list.length){ $('pv_state').textContent = '接口没有返回模型，手动填吧。'; return; }
-    $('pv_models').value = list.join('\n');
-    $('pv_state').textContent = '已拉取 ' + list.length + ' 个模型（可自行删减再保存）';
+    fetchedModels = list;
+    renderFetchPanel();
+    $('pv_state').textContent = '已拉取 ' + list.length + ' 个模型——勾选后点「应用选中」';
   }catch(e){ $('pv_state').textContent = '拉取失败：' + e.message; }
 }
 async function removeProv(p){
@@ -527,6 +576,25 @@ $('pv_save').onclick = saveProv;
 $('pv_fetch').onclick = fetchModels;
 $('pv_cancel').onclick = resetProvForm;
 $('pv_showkey').onchange = () => { $('pv_key').type = $('pv_showkey').checked ? 'text' : 'password'; };
+$('fv_filter').addEventListener('input', () => {
+  const q = $('fv_filter').value.trim().toLowerCase();
+  document.querySelectorAll('#fv_list .fv-row').forEach(lab => {
+    const m = lab.querySelector('input').value.toLowerCase();
+    lab.style.display = (!q || m.includes(q)) ? '' : 'none';
+  });
+});
+$('fv_all').onclick = () => { visibleFvBoxes().forEach(cb => { cb.checked = true; }); updateFvCount(); };
+$('fv_none').onclick = () => { visibleFvBoxes().forEach(cb => { cb.checked = false; }); updateFvCount(); };
+$('fv_close').onclick = () => { $('fetchPanel').classList.add('hide'); };
+$('fv_apply').onclick = () => {
+  const picked = [...document.querySelectorAll('#fv_list input[type=checkbox]')].filter(cb => cb.checked).map(cb => cb.value);
+  const fetchedSet = new Set(fetchedModels);
+  const manualKeep = $('pv_models').value.split('\n').map(s => s.trim()).filter(Boolean).filter(m => !fetchedSet.has(m));
+  const seen = new Set(); const uniq = [];
+  [...picked, ...manualKeep].forEach(m => { if(!seen.has(m)){ seen.add(m); uniq.push(m); } });
+  $('pv_models').value = uniq.join('\n');
+  $('pv_state').textContent = '已应用 ' + uniq.length + ' 个模型（记得点保存）';
+};
 $('selProvider').onchange = () => { fillModels($('selProvider').value); saveCfg(); };
 $('selModel').onchange = saveCfg;
 ['prompt','p_format','p_resp','p_quality','p_style','p_background','p_comp','p_n'].forEach(id => {
