@@ -33,6 +33,7 @@
     --primary: #6366f1;
     --primary-hover: #4f46e5;
     --primary-glow: rgba(99, 102, 241, 0.35);
+    --primary-light: rgba(99, 102, 241, 0.14);
     --accent: #8b5cf6;
     --accent-glow: rgba(139, 92, 246, 0.25);
     --grad-primary: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #d946ef 100%);
@@ -68,6 +69,7 @@
     --primary: #6366f1;
     --primary-hover: #4f46e5;
     --primary-glow: rgba(99, 102, 241, 0.2);
+    --primary-light: rgba(99, 102, 241, 0.1);
     --accent: #8b5cf6;
     --accent-glow: rgba(139, 92, 246, 0.15);
     --grad-primary: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #d946ef 100%);
@@ -620,6 +622,12 @@
   .dropzone.has-file {
     border-style: solid;
     padding: 10px;
+  }
+  .dropzone.dragging {
+    border-color: var(--primary);
+    border-style: solid;
+    background: var(--primary-light);
+    box-shadow: 0 0 12px var(--primary-glow);
   }
   .dropzone input[type="file"] {
     position: absolute;
@@ -2301,11 +2309,13 @@ function updatePromptStats(){
   $('promptLen').textContent = `${$('prompt').value.length} 字符`;
 }
 
-/* ================= 参考图上传交互 ================= */
+/* ================= 参考图上传交互（点击 + 拖拽） ================= */
 function bindDropzone(dropId, inputId, thumbId, emptyId){
   const drop = $(dropId), input = $(inputId), thumb = $(thumbId), empty = $(emptyId);
-  input.addEventListener('change', () => {
-    const f = input.files[0];
+  let objectUrl = '';
+
+  const render = (f) => {
+    if(objectUrl){ URL.revokeObjectURL(objectUrl); objectUrl = ''; }
     if(!f){
       thumb.innerHTML = '';
       thumb.classList.add('hide');
@@ -2313,17 +2323,55 @@ function bindDropzone(dropId, inputId, thumbId, emptyId){
       drop.classList.remove('has-file');
       return;
     }
-    const url = URL.createObjectURL(f);
+    objectUrl = URL.createObjectURL(f);
     thumb.innerHTML = `
-      <img src="${url}" class="dropzone-img" alt="">
+      <img src="${objectUrl}" class="dropzone-img" alt="">
       <div class="dropzone-info">
         <div class="dropzone-name">${esc(f.name)}</div>
-        <div class="dropzone-action">点击可重新选择更换</div>
+        <div class="dropzone-action">点击或拖拽可更换</div>
       </div>
     `;
     thumb.classList.remove('hide');
     empty.classList.add('hide');
     drop.classList.add('has-file');
+  };
+
+  input.addEventListener('change', () => render(input.files[0]));
+
+  // 拖拽：dragover 必须 preventDefault，否则浏览器不会触发 drop
+  ['dragenter', 'dragover'].forEach(ev =>
+    drop.addEventListener(ev, e => {
+      e.preventDefault();
+      e.stopPropagation();
+      drop.classList.add('dragging');
+    })
+  );
+  ['dragleave', 'dragend'].forEach(ev =>
+    drop.addEventListener(ev, e => {
+      e.preventDefault();
+      e.stopPropagation();
+      // dragleave 在子元素间移动时也会冒泡，用 relatedTarget 判断是否真的离开
+      if(ev === 'dragleave' && e.relatedTarget && drop.contains(e.relatedTarget)) return;
+      drop.classList.remove('dragging');
+    })
+  );
+  drop.addEventListener('drop', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    drop.classList.remove('dragging');
+    const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if(!f) return;
+    if(!/^image\//.test(f.type)){
+      return showToast('请拖入图片文件（png / jpg / webp）', 'warning');
+    }
+    // 同步进 input，保证 buildPayload 能从 input.files 读到
+    try {
+      const dt = new DataTransfer();
+      dt.items.add(f);
+      input.files = dt.files;
+    }catch(_){}
+    render(f);
+    showToast(`已载入参考图：${f.name}`, 'success');
   });
 }
 bindDropzone('imgDrop', 'imgFile', 'imgThumb', 'imgEmpty');
@@ -2389,11 +2437,13 @@ function loadCfg(){
   updatePromptStats();
   ['format', 'resp', 'quality', 'style', 'background', 'comp'].forEach(k => {
     const el = $('p_' + k);
-    if(el && cfg[k] !== undefined) el.value = cfg[k];
+    if(!el) return;
+    if(cfg[k] !== undefined) el.value = cfg[k];
+    el.addEventListener('change', saveCfg);
   });
   if(cfg.size){
     if(SIZE_PRESETS.includes(cfg.size)){ selectRatio(cfg.size); }
-    else { selectRatio('custom'); $('p_size').value = cfg.size; sizeVal = cfg.size; }
+    else { $('p_size').value = cfg.size; selectRatio('custom'); }
   }
   if(cfg.wm){
     document.querySelectorAll('#wmChips .pill-btn').forEach(b => b.classList.toggle('active', b.dataset.v === 'on'));
