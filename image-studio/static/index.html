@@ -615,6 +615,17 @@
     position: relative;
     overflow: hidden;
   }
+  .dropzone-text {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    color: var(--text-dim);
+    pointer-events: none;
+    user-select: none;
+    min-height: 44px;
+  }
   .dropzone:hover {
     border-color: var(--primary);
     background: var(--bg-card-hover);
@@ -796,11 +807,6 @@
     font-family: ui-monospace, Menlo, Consolas, monospace;
     font-weight: 600;
   }
-  .btn-generate:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-    filter: grayscale(0.2);
-  }
   .btn-cancel {
     width: 100%;
     padding: 10px 16px;
@@ -815,11 +821,6 @@
   }
   .btn-cancel:hover {
     background: var(--danger-bg);
-  }
-  .shortcut-hint {
-    font-size: 11px;
-    color: var(--text-dim);
-    text-align: center;
   }
 
   /* ================= 右侧展示工作区 ================= */
@@ -1800,9 +1801,6 @@
             </div>
           </div>
 
-          <!-- 张数隐藏字段 (当前固定1) -->
-          <input id="p_n" type="hidden" value="1">
-
           <!-- 第4行: 额外透传参数 -->
           <div class="form-group">
             <label class="form-label">
@@ -2076,20 +2074,35 @@
 <div class="toast-container" id="toastBox"></div>
 
 <script>
-/* ================= 诊断与黑匣子排查 ================= */
-(function(){
-  window.__boot = 0;
-  window.addEventListener('error', function(e){
-    if(e && e.message){ window.__lastErr = e.message + ' @' + (e.lineno || 0) + ':' + (e.colno || 0); }
-  }, true);
-  window.addEventListener('unhandledrejection', function(e){
-    try{ window.__lastErr = 'Promise: ' + ((e.reason && e.reason.message) || e.reason); }catch(_){}
-  });
-})();
-
 /* ================= 核心状态与数据 ================= */
 const $ = id => document.getElementById(id);
-const esc = s => String(s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const esc = s => String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+/* 复制到剪贴板。navigator.clipboard 只在安全上下文（HTTPS / localhost）可用，
+   通过局域网 IP 以 http 访问时会直接 reject，必须兜底并如实提示。 */
+async function copyText(text, okMsg){
+  if(!text) return showToast('没有可复制的内容', 'warning');
+  try{
+    // 先判 isSecureContext，再碰 navigator.clipboard——顺序反了会在
+    // 非安全上下文里去取一个本就不该访问的属性。
+    if(window.isSecureContext && navigator.clipboard){
+      await navigator.clipboard.writeText(text);
+    }else{
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.cssText = 'position:fixed;top:0;left:-9999px;opacity:0';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      if(!ok) throw new Error('execCommand 复制失败');
+    }
+    showToast(okMsg, 'success');
+  }catch(e){
+    showToast('复制失败：浏览器拒绝了剪贴板访问，请手动选中复制', 'error');
+  }
+}
 
 let mode = 'generate';
 let sizeVal = 'auto';
@@ -2100,6 +2113,9 @@ let running = false, ctrl = null, t0 = 0, timerId = null;
 let providers = [];
 let galleryList = [];
 let curLightboxIdx = -1;
+// 画廊当前实际渲染出来的顺序（过滤后 + 倒序，最新在前）。
+// 灯箱的左右翻页必须走这个列表，否则网格顺序与翻页方向相反。
+let visibleList = [];
 let editingId = null;
 let wantSel = { provider: '', model: '' };
 let fetchedModels = [];
@@ -2287,9 +2303,7 @@ $('clearPromptBtn').onclick = () => {
   saveCfg();
 };
 $('copyPromptBtn').onclick = () => {
-  const p = $('prompt').value.trim();
-  if(!p) return showToast('提示词为空', 'warning');
-  navigator.clipboard.writeText(p).then(() => showToast('提示词已复制到剪贴板 ✓', 'success'));
+  copyText($('prompt').value.trim(), '提示词已复制到剪贴板 ✓');
 };
 document.querySelectorAll('.tag-chip').forEach(chip => {
   chip.onclick = () => {
@@ -2457,15 +2471,22 @@ function loadCfg(){
 
 /* ================= 供应商与模型数据 ================= */
 async function loadProviders(){
+  let ok = false;
   try{
     const r = await fetch('/api/providers');
+    if(!r.ok) throw new Error('HTTP ' + r.status);
     const list = await r.json();
-    if(Array.isArray(list)) providers = list;
-  }catch(_){}
+    if(Array.isArray(list)){ providers = list; ok = true; }
+    else throw new Error('返回格式异常');
+  }catch(e){
+    // 拉取失败时不要把 providers 清空再 saveCfg，否则会把已选渠道写坏
+    showToast('渠道加载失败：' + friendlyErrMsg(e.message), 'error');
+    return;
+  }
   renderProviderSelects();
   renderProviderCards();
   fillInspireProviders();
-  saveCfg();
+  if(ok) saveCfg();
 }
 
 function renderProviderSelects(){
@@ -2596,22 +2617,27 @@ async function saveProvider(){
     return;
   }
   const body = { name, base, key, models };
-  let r;
-  if(editingId){
-    r = await fetch('/api/providers/' + encodeURIComponent(editingId), {
-      method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
-    });
-  } else {
-    r = await fetch('/api/providers', {
-      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
-    });
-  }
-  if(!r.ok){
-    const d = await r.json().catch(() => ({}));
-    showToast('保存失败：' + (d.error || r.status), 'error');
+  let r, saved;
+  try{
+    if(editingId){
+      r = await fetch('/api/providers/' + encodeURIComponent(editingId), {
+        method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
+      });
+    } else {
+      r = await fetch('/api/providers', {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
+      });
+    }
+    saved = await r.json().catch(() => ({}));
+  }catch(e){
+    // fetch 本身失败（服务未启动/断网）——不能当成保存成功
+    showToast('保存失败：无法连接服务器 ' + friendlyErrMsg(e.message), 'error');
     return;
   }
-  const saved = await r.json().catch(() => ({}));
+  if(!r.ok){
+    showToast('保存失败：' + friendlyErrMsg((saved && (saved.error || saved.message)) || ('HTTP ' + r.status)), 'error');
+    return;
+  }
   resetProvForm();
   await loadProviders();
   if(saved && saved.id){
@@ -2625,7 +2651,16 @@ $('pv_save').onclick = saveProvider;
 
 async function deleteProvider(p){
   if(!confirm(`确定删除供应商「${p.name}」吗？已生成的历史图片不会丢失。`)) return;
-  await fetch('/api/providers/' + encodeURIComponent(p.id), { method: 'DELETE' });
+  try{
+    const r = await fetch('/api/providers/' + encodeURIComponent(p.id), { method: 'DELETE' });
+    if(!r.ok){
+      let d = {}; try{ d = await r.json(); }catch(_){}
+      throw new Error((d && (d.error || d.message)) || ('HTTP ' + r.status));
+    }
+  }catch(e){
+    showToast('删除失败: ' + friendlyErrMsg(e.message), 'error');
+    return;
+  }
   if(editingId === p.id) resetProvForm();
   await loadProviders();
   showToast('已删除供应商渠道', 'info');
@@ -2796,7 +2831,7 @@ function buildPayload(){
     prompt: $('prompt').value,
     params: {
       size: size === 'auto' ? '' : size,
-      n: 1,
+      n: 1,   // 当前固定单张出图；上游不支持时不要盲目调高，会直接报错
       output_format: $('p_format').value,
       response_format: $('p_resp').value,
       quality: $('p_quality').value,
@@ -3008,12 +3043,25 @@ function renderHeroResult(item){
 async function loadGallery(){
   try {
     const r = await fetch('/api/gallery');
+    if(!r.ok) throw new Error('HTTP ' + r.status);
     const list = await r.json();
     if(Array.isArray(list)){
       galleryList = list;
       renderGallery();
+      return true;
     }
-  }catch(_){}
+    throw new Error('返回格式异常');
+  }catch(e){
+    // 不再静默吞掉：服务挂了要能看出来，而不是伪装成「空空如也」
+    galleryList = [];
+    renderGallery();
+    const grid = $('gallery');
+    if(grid) grid.innerHTML = `<div style="grid-column:1/-1; text-align:center; padding:40px 0; color:var(--danger); font-size:13px;">
+      图库加载失败：${esc(friendlyErrMsg(e.message))}<br>
+      <span style="color:var(--text-dim)">请确认后端服务正在运行，然后点「刷新」重试</span>
+    </div>`;
+    return false;
+  }
 }
 
 function renderGallery(){
@@ -3029,13 +3077,17 @@ function renderGallery(){
   $('gcount').textContent = `${galleryList.length} 张`;
 
   if(!filtered.length){
+    visibleList = [];
     grid.innerHTML = `<div style="grid-column:1/-1; text-align:center; padding:40px 0; color:var(--text-dim); font-size:13px;">
       ${q ? '没有匹配到相关提示词的图片' : '暂无历史生成图片，快去创作第一张吧！'}
     </div>`;
     return;
   }
 
-  filtered.slice().reverse().forEach((it) => {
+  // 记住渲染顺序，供灯箱翻页使用
+  visibleList = filtered.slice().reverse();
+
+  visibleList.forEach((it) => {
     const card = document.createElement('div');
     card.className = 'gallery-item';
     card.innerHTML = `
@@ -3092,15 +3144,27 @@ $('refreshGalleryBtn').onclick = () => {
 
 async function deleteGalleryItem(id){
   if(!confirm('确定删除这张图片吗？将从服务器永久移除。')) return;
-  await fetch('/api/gallery/' + encodeURIComponent(id), { method: 'DELETE' });
+  try{
+    const r = await fetch('/api/gallery/' + encodeURIComponent(id), { method: 'DELETE' });
+    if(!r.ok){
+      let d = {}; try{ d = await r.json(); }catch(_){}
+      throw new Error((d && (d.error || d.message)) || ('HTTP ' + r.status));
+    }
+  }catch(e){
+    // 删除失败就如实报错，不能弹"已删除"骗用户
+    showToast('删除失败: ' + friendlyErrMsg(e.message), 'error');
+    return;
+  }
   loadGallery();
   showToast('图片已删除', 'info');
 }
 
 /* ================= 沉浸式大图灯箱 Lightbox ================= */
 function openLightboxByItem(item){
-  const idx = galleryList.findIndex(x => x.id === item.id || x.url === item.url);
-  curLightboxIdx = idx >= 0 ? idx : 0;
+  // 在「当前渲染顺序」里定位；找不到就退到 0，并直接显示传入的 item，
+  // 不能回退成第 0 张——那会让用户看到另一张不相干的图。
+  const idx = visibleList.findIndex(x => x.id === item.id || x.url === item.url);
+  curLightboxIdx = idx;
   showLightbox(item);
 }
 function showLightbox(item){
@@ -3114,7 +3178,7 @@ function showLightbox(item){
   $('lb').classList.remove('hide');
 
   $('lbCopyBtn').onclick = () => {
-    navigator.clipboard.writeText(item.prompt || '').then(() => showToast('提示词已复制', 'success'));
+    copyText(item.prompt || '', '提示词已复制');
   };
   $('lbReuseBtn').onclick = () => {
     $('prompt').value = item.prompt || '';
@@ -3131,14 +3195,17 @@ function closeLB(){
 $('lbX').onclick = closeLB;
 
 $('lbPrev').onclick = () => {
-  if(!galleryList.length) return;
-  curLightboxIdx = (curLightboxIdx - 1 + galleryList.length) % galleryList.length;
-  showLightbox(galleryList[curLightboxIdx]);
+  if(!visibleList.length) return;
+  // curLightboxIdx 可能是 -1（定位失败），先归一化再翻页，避免翻到末尾
+  const i = curLightboxIdx < 0 ? 0 : curLightboxIdx;
+  curLightboxIdx = (i - 1 + visibleList.length) % visibleList.length;
+  showLightbox(visibleList[curLightboxIdx]);
 };
 $('lbNext').onclick = () => {
-  if(!galleryList.length) return;
-  curLightboxIdx = (curLightboxIdx + 1) % galleryList.length;
-  showLightbox(galleryList[curLightboxIdx]);
+  if(!visibleList.length) return;
+  const i = curLightboxIdx < 0 ? 0 : curLightboxIdx;
+  curLightboxIdx = (i + 1) % visibleList.length;
+  showLightbox(visibleList[curLightboxIdx]);
 };
 
 /* ================= 键盘快捷键监听 ================= */
@@ -3160,7 +3227,6 @@ document.addEventListener('keydown', e => {
 });
 
 /* ================= 初始化启动 ================= */
-window.__boot = 1;
 initTheme();
 loadCfg();
 showView(location.hash === '#config' ? 'config' : 'gen');
@@ -3170,7 +3236,6 @@ refreshSvc();
 setInterval(refreshSvc, 12000);
 loadGallery();
 updateExecBadge();
-window.__boot = 9;
 </script>
 </body>
 </html>

@@ -1,0 +1,11 @@
+# 图库运行时数据：含明文 API Key（providers.json）与生成的大图，
+# 绝不能进入构建上下文。镜像只 COPY server.py 与 static/，data 走卷挂载。
+data/
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+
+# 本地杂项
+.DS_Store
+*.log

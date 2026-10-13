@@ -5,8 +5,9 @@ Image Fantasy —— 自托管图像生成 Web 应用（零依赖，仅用 Pytho
 
 特性：
   - 对接任意 OpenAI 兼容图像 API（gpt-image-1 及各类兼容渠道 / 代理）
-  - 全参数暴露：prompt / size(512–4096, 32倍数, ≤3:1, 或 auto) / n / output_format /
-    output_compression / response_format / watermark / prompt_extend(提示词润色) / 参考图编辑(edit)
+  - 全参数暴露：prompt / size / n / output_format / output_compression /
+    response_format / watermark / prompt_extend(提示词润色) / 参考图编辑(edit)
+    （尺寸等取值范围由前端控件约束，服务端不做二次校验，原样透传给上游）
   - GPT-Image 兼容参数(quality/style/background)透传 + 任意额外参数 JSON 透传
   - 供应商与模型管理：供应商（Base URL + Key + 模型清单）持久化在 data/providers.json，
     前端只需选择供应商与模型；生成请求由服务端注入凭据
@@ -18,9 +19,15 @@ Image Fantasy —— 自托管图像生成 Web 应用（零依赖，仅用 Pytho
 
 运行（本地）：
   python3 server.py
-  # 浏览器打开 http://127.0.0.1:8080
+  # 浏览器打开 http://127.0.0.1:19150
 部署（Docker）：
   docker compose up -d
+  # compose 中已显式设置 HOST=0.0.0.0 以便从宿主机/外部访问
+环境变量：
+  PORT  监听端口，默认 19150
+  HOST  监听地址，默认 127.0.0.1（仅本机）；对外提供服务时设为 0.0.0.0
+        ⚠ 本服务无鉴权，且 /api/providers 会明文返回上游 API Key，
+          仅建议在可信网络或反向代理鉴权之后暴露。
 """
 import http.server
 import socketserver
@@ -39,12 +46,21 @@ import ipaddress
 import socket
 
 PORT = int(os.environ.get("PORT", "19150"))  # 默认高位端口
+# 默认只监听本机回环：服务端无鉴权，且 /api/providers 会明文返回上游 API Key，
+# 绑定 0.0.0.0 等于把密钥暴露给同网段任何人。需要对外提供时显式设 HOST=0.0.0.0。
+HOST = os.environ.get("HOST", "127.0.0.1")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 DATA_DIR = os.environ.get("DATA_DIR", os.path.join(BASE_DIR, "data"))
 IMAGES_DIR = os.path.join(DATA_DIR, "images")
 GALLERY_FILE = os.path.join(DATA_DIR, "gallery.json")
 PROVIDERS_FILE = os.path.join(DATA_DIR, "providers.json")
+# 单个请求体上限。图生图会带 base64 参考图，4096px PNG 编码后约 20-30MB，
+# 多张很容易上到几十 MB，所以留足余量；但仍要有上限，否则一个 Content-Length
+# 就能让服务端把内存吃光。
+MAX_BODY = 64 * 1024 * 1024
+# 请求日志上限，超过则把旧日志重命名为 server.log.1（只保留一代）
+LOG_MAX_BYTES = 8 * 1024 * 1024
 os.makedirs(IMAGES_DIR, exist_ok=True)
 
 _lock = threading.RLock()  # 重入锁：load_gallery + save_gallery 可以嵌套调用
@@ -97,11 +113,14 @@ def _atomic_write(filepath: str, content: bytes) -> None:
 # ---- 图库持久化（原子写 + 错误不静默） ----
 
 def load_gallery():
+    # 文件不存在 = 全新部署/首次启动，是正常状态（空图库）
+    if not os.path.isfile(GALLERY_FILE):
+        return []
     try:
         with open(GALLERY_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception as e:
-        # 抛出异常让调用方知道加载失败，避免静默回 [] 覆盖文件
+        # 只有真正的读取/解析失败才抛错，绝不让坏文件被空列表覆盖
         raise OSError(f"图库文件加载失败: {e}") from e
 
 
@@ -112,6 +131,9 @@ def save_gallery(items):
 
 
 def load_providers():
+    # 文件不存在 = 全新部署/首次启动，是正常状态（无供应商）
+    if not os.path.isfile(PROVIDERS_FILE):
+        return []
     try:
         with open(PROVIDERS_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -188,6 +210,9 @@ def upstream_err_text(err, code):
 
 class Handler(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
+    # 单个连接的读写超时。HTTP/1.1 keep-alive 下连接会一直留着，
+    # 没有超时就等于一个慢客户端/半开连接可以永久占住一个线程。
+    timeout = 120
 
     def _send(self, code, obj=None, ctype="application/json", body=None):
         if body is None:
@@ -254,9 +279,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
             ctype = {"png": "image/png", "jpeg": "image/jpeg", "jpg": "image/jpeg", "webp": "image/webp"}.get(ext, "application/octet-stream")
             self._send_file(fpath, ctype)
         elif p == "/api/gallery":
-            self._send(200, load_gallery())
+            try:
+                self._send(200, load_gallery())
+            except Exception as e:
+                self._send(500, {"error": str(e)})
         elif p == "/api/providers":
-            self._send(200, load_providers())
+            try:
+                self._send(200, load_providers())
+            except Exception as e:
+                self._send(500, {"error": str(e)})
         elif p == "/api/ping":
             self._send(200, {"ok": True, "time": int(time.time() * 1000)})
         else:
@@ -315,8 +346,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if p != "/api/generate":
             self._send(404, {"error": "not found"}); return
         try:
-            length = int(self.headers.get("Content-Length", 0))
-            data = json.loads(self.rfile.read(length))
+            data = json.loads(self._read_raw_body() or b"{}")
+        except ValueError as e:
+            self._send(413, {"error": str(e)}); return
         except Exception as e:
             self._send(400, {"error": "请求解析失败: " + str(e)}); return
 
@@ -454,10 +486,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     # ---- 供应商管理 ----
 
+    def _read_raw_body(self):
+        """按 Content-Length 读请求体，带上限保护。超限抛 ValueError。"""
+        length = int(self.headers.get("Content-Length", 0) or 0)
+        if length < 0:
+            raise ValueError("Content-Length 非法")
+        if length > MAX_BODY:
+            raise ValueError("请求体过大（上限 %d MB）" % (MAX_BODY // 1024 // 1024))
+        return self.rfile.read(length) if length else b""
+
     def _read_json_body(self):
         try:
-            length = int(self.headers.get("Content-Length", 0))
-            return json.loads(self.rfile.read(length) or b"{}")
+            return json.loads(self._read_raw_body() or b"{}")
         except Exception:
             return None
 
@@ -546,6 +586,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
         key = (body.get("key") or "").strip()
         if not base:
             self._send(400, {"error": "缺少 Base URL"}); return
+        # 这里只挡协议，不做 _validate_url 的私网 IP 拦截：
+        # provider base 是使用者自己在表单里填的（而非上游返回的不可信数据），
+        # 而本地部署的模型服务（Ollama :11434 / LM Studio :1234 / LocalAI :8000）
+        # 本来就住在环回地址上，一刀切会让这些场景直接不可用。
+        # 真正需要防的是 save_image 里上游返回的图片 URL，那条仍走 _validate_url。
+        if urllib.parse.urlparse(base).scheme.lower() not in ("http", "https"):
+            self._send(400, {"error": "Base URL 仅支持 HTTP/HTTPS 协议"}); return
         hdrs = {}
         if key:
             hdrs["Authorization"] = "Bearer " + key
@@ -659,9 +706,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._send(502, {"error": "调用 LLM 失败: " + str(e)})
 
     def log_message(self, fmt, *args):
-        # 请求日志写入 data/server.log（静默，不刷终端）
+        # 请求日志写入 data/server.log（静默，不刷终端）。
+        # 长跑服务不轮转的话日志会无限膨胀，所以超过上限就整体截断一份。
         try:
-            with open(os.path.join(DATA_DIR, "server.log"), "a", encoding="utf-8") as f:
+            path = os.path.join(DATA_DIR, "server.log")
+            try:
+                if os.path.getsize(path) > LOG_MAX_BYTES:
+                    os.replace(path, path + ".1")
+            except OSError:
+                pass          # 文件不存在即无需轮转
+            with open(path, "a", encoding="utf-8") as f:
                 f.write("[%s] %s\n" % (time.strftime("%m-%d %H:%M:%S"), fmt % args))
         except Exception:
             pass
@@ -673,10 +727,15 @@ class ThreadingHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
 
 if __name__ == "__main__":
     os.chdir(BASE_DIR)
-    with ThreadingHTTPServer(("0.0.0.0", PORT), Handler) as httpd:
-        print("Image Fantasy 已启动 ->  http://0.0.0.0:%d" % PORT)
+    with ThreadingHTTPServer((HOST, PORT), Handler) as httpd:
+        shown = "127.0.0.1" if HOST in ("127.0.0.1", "localhost") else HOST
+        print("Image Fantasy 已启动 ->  http://%s:%d" % (shown, PORT))
         print("图库目录: %s" % DATA_DIR)
-        print("按 Ctrl+C 退出。")
+        if HOST not in ("127.0.0.1", "localhost"):
+            print("⚠ 警告: 当前监听 %s 且服务无鉴权，/api/providers 会返回明文 API Key。" % HOST)
+            print("   仅建议在可信网络或有反向代理鉴权的情况下这样运行。")
+        else:
+            print("按 Ctrl+C 退出。")
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:
