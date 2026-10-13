@@ -6,10 +6,10 @@ WORKDIR /app
 COPY server.py /app/server.py
 COPY static /app/static
 
-ENV PORT=8080
+ENV PORT=19150
 ENV DATA_DIR=/data
 RUN mkdir -p /data/images
 
-EXPOSE 8080
+EXPOSE 19150
 
 CMD ["python3", "server.py"]

@@ -34,8 +34,11 @@ import os
 import time
 import re
 import uuid
+import tempfile
+import ipaddress
+import socket
 
-PORT = int(os.environ.get("PORT", "8080"))
+PORT = int(os.environ.get("PORT", "19150"))  # 默认高位端口
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 DATA_DIR = os.environ.get("DATA_DIR", os.path.join(BASE_DIR, "data"))
@@ -44,35 +47,82 @@ GALLERY_FILE = os.path.join(DATA_DIR, "gallery.json")
 PROVIDERS_FILE = os.path.join(DATA_DIR, "providers.json")
 os.makedirs(IMAGES_DIR, exist_ok=True)
 
-_lock = threading.Lock()
+_lock = threading.RLock()  # 重入锁：load_gallery + save_gallery 可以嵌套调用
 
+
+# ---- 安全与原子写辅助 ----
+
+def _is_private_host(host: str) -> bool:
+    """判断宿主名是否指向私有/特殊地址（loopback, link-local, private, 0.0.0.0）"""
+    if not host:
+        return True
+    try:
+        # 解析 IPv4
+        for family, _, _, _, sockaddr in socket.getaddrinfo(host, None, socket.AF_INET):
+            ip = ipaddress.IPv4Address(sockaddr[0])
+            if ip.is_loopback or ip.is_link_local or ip.is_private or str(ip) == "0.0.0.0":
+                return True
+    except Exception:
+        # 解析失败视为不安全
+        return True
+    return False
+
+
+def _validate_url(url: str) -> None:
+    """校验 URL 是否安全（不仅 scheme，还要 host 不能是私有/本地环回）"""
+    try:
+        p = urllib.parse.urlparse(url)
+    except Exception:
+        raise ValueError(f"无效的 URL: {url}")
+    if p.scheme.lower() not in ("http", "https"):
+        raise ValueError(f"仅支持 HTTP/HTTPS 协议: {url}")
+    host = p.hostname or ""
+    # 忽略 file:// URL（由 caller 过滤掉）
+    if not host or _is_private_host(host):
+        raise ValueError(f"目标地址不允许访问: {url}")
+
+
+def _atomic_write(filepath: str, content: bytes) -> None:
+    """原子写入：先写临时文件，再 os.replace 覆盖。不会破坏旧文件。"""
+    filepath_dir = os.path.dirname(filepath) or "."
+    fd, tmp = tempfile.mkstemp(dir=filepath_dir, prefix=".tmp_")
+    try:
+        os.write(fd, content)
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    os.replace(tmp, filepath)
+
+
+# ---- 图库持久化（原子写 + 错误不静默） ----
 
 def load_gallery():
     try:
         with open(GALLERY_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
-    except Exception:
-        return []
+    except Exception as e:
+        # 抛出异常让调用方知道加载失败，避免静默回 [] 覆盖文件
+        raise OSError(f"图库文件加载失败: {e}") from e
 
 
 def save_gallery(items):
+    data = json.dumps(items, ensure_ascii=False, indent=2).encode()
     with _lock:
-        with open(GALLERY_FILE, "w", encoding="utf-8") as f:
-            json.dump(items, f, ensure_ascii=False, indent=2)
+        _atomic_write(GALLERY_FILE, data)
 
 
 def load_providers():
     try:
         with open(PROVIDERS_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
-    except Exception:
-        return []
+    except Exception as e:
+        raise OSError(f"供应商文件加载失败: {e}") from e
 
 
 def save_providers(items):
+    data = json.dumps(items, ensure_ascii=False, indent=2).encode()
     with _lock:
-        with open(PROVIDERS_FILE, "w", encoding="utf-8") as f:
-            json.dump(items, f, ensure_ascii=False, indent=2)
+        _atomic_write(PROVIDERS_FILE, data)
 
 
 def ext_from_b64(b64):
@@ -95,6 +145,8 @@ def save_image(item, idx, out_fmt):
         data = base64.b64decode(item["b64_json"])
     elif item.get("url"):
         url = item["url"]
+        # SSRF 防护：仅 accept http/https，且 host 不能是本地/私有IP
+        _validate_url(url)
         req = urllib.request.Request(url, headers={"User-Agent": "image-fantasy"})
         with urllib.request.urlopen(req, timeout=60) as resp:
             data = resp.read()
@@ -219,22 +271,30 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if not m:
             self._send(404, {"error": "not found"}); return
         gid = m.group(1)
-        items = load_gallery()
-        new_items = []
-        removed = None
-        for it in items:
-            if it.get("id") == gid:
-                removed = it
-                fpath = os.path.join(IMAGES_DIR, it.get("filename", ""))
-                try:
-                    if os.path.isfile(fpath): os.remove(fpath)
-                except Exception:
-                    pass
-            else:
-                new_items.append(it)
-        if removed is None:
-            self._send(404, {"error": "not found"}); return
-        save_gallery(new_items)
+        # 在锁内完成 读 -> 改 -> 写，避免并发新旧不同步
+        with _lock:
+            try:
+                items = load_gallery()
+            except Exception as e:
+                self._send(500, {"error": f"图库读取失败: {e}"})
+                return
+            new_items = []
+            removed = None
+            for it in items:
+                if it.get("id") == gid:
+                    removed = it
+                    fpath = os.path.join(IMAGES_DIR, it.get("filename", ""))
+                    try:
+                        if os.path.isfile(fpath): os.remove(fpath)
+                    except Exception:
+                        pass
+                else:
+                    new_items.append(it)
+            if removed is None:
+                self._send(404, {"error": "not found"}); return
+            # 原子写
+            data = json.dumps(new_items, ensure_ascii=False, indent=2).encode()
+            _atomic_write(GALLERY_FILE, data)
         self._send(200, {"ok": True})
 
     def do_PUT(self):
@@ -352,21 +412,30 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._emit({"stage": "saving", "count": len(items)})
                 out_fmt = params.get("output_format")
                 saved = []
-                gallery = load_gallery()
-                for i, it in enumerate(items):
-                    filename, local_url = save_image(it, i, out_fmt)
-                    if not filename:
-                        continue
-                    gid = filename.rsplit(".", 1)[0]
-                    entry = {
-                        "id": gid, "filename": filename, "url": local_url,
-                        "prompt": prompt, "model": model,
-                        "size": params.get("size", ""), "output_format": out_fmt or "",
-                        "mode": mode, "created": int(time.time() * 1000),
-                    }
-                    gallery.append(entry)
-                    saved.append(entry)
-                save_gallery(gallery)
+                # 在锁内完成 读 -> 改 -> 写，避免并发修正
+                with _lock:
+                    try:
+                        gallery = load_gallery()
+                    except Exception as e:
+                        # 加载失败，返回错误而不静默吞掉
+                        self._emit({"stage": "error", "message": f"图库加载失败: {e}"})
+                        raise
+                    for i, it in enumerate(items):
+                        filename, local_url = save_image(it, i, out_fmt)
+                        if not filename:
+                            continue
+                        gid = filename.rsplit(".", 1)[0]
+                        entry = {
+                            "id": gid, "filename": filename, "url": local_url,
+                            "prompt": prompt, "model": model,
+                            "size": params.get("size", ""), "output_format": out_fmt or "",
+                            "mode": mode, "created": int(time.time() * 1000),
+                        }
+                        gallery.append(entry)
+                        saved.append(entry)
+                    # 原子写
+                    data = json.dumps(gallery, ensure_ascii=False, indent=2).encode()
+                    _atomic_write(GALLERY_FILE, data)
                 self._emit({"stage": "done", "created": upstream.get("created"),
                             "usage": upstream.get("usage"), "items": saved})
             except (BrokenPipeError, ConnectionResetError):
@@ -413,43 +482,61 @@ class Handler(http.server.BaseHTTPRequestHandler):
         name, base, key, models = self._provider_fields(body)
         if not name or not base:
             self._send(400, {"error": "名称和 Base URL 必填"}); return
-        items = load_providers()
-        prov = {
-            "id": "p_" + uuid.uuid4().hex[:8],
-            "name": name, "base": base, "key": key,
-            "models": models, "created": int(time.time() * 1000),
-        }
-        items.append(prov)
-        save_providers(items)
-        self._send(200, prov)
+        # 在锁内完成 读 -> 改 -> 写，避免并发修正
+        with _lock:
+            try:
+                items = load_providers()
+            except Exception as e:
+                self._send(500, {"error": f"供应商读取失败: {e}"}); return
+            prov = {
+                "id": "p_" + uuid.uuid4().hex[:8],
+                "name": name, "base": base, "key": key,
+                "models": models, "created": int(time.time() * 1000),
+            }
+            items.append(prov)
+            data = json.dumps(items, ensure_ascii=False, indent=2).encode()
+            _atomic_write(PROVIDERS_FILE, data)
+            self._send(200, prov)
 
     def _update_provider(self, pid):
         body = self._read_json_body()
         if body is None:
             self._send(400, {"error": "请求解析失败"}); return
         name, base, key, models = self._provider_fields(body)
-        items = load_providers()
-        found = None
-        for it in items:
-            if it.get("id") == pid:
-                if name: it["name"] = name
-                if base: it["base"] = base
-                it["key"] = key
-                it["models"] = models
-                found = it
-                break
-        if found is None:
-            self._send(404, {"error": "供应商不存在"}); return
-        save_providers(items)
-        self._send(200, found)
+        # 在锁内完成 读 -> 改 -> 写，避免并发修正
+        with _lock:
+            try:
+                items = load_providers()
+            except Exception as e:
+                self._send(500, {"error": f"供应商读取失败: {e}"}); return
+            found = None
+            for it in items:
+                if it.get("id") == pid:
+                    if name: it["name"] = name
+                    if base: it["base"] = base
+                    it["key"] = key
+                    it["models"] = models
+                    found = it
+                    break
+            if found is None:
+                self._send(404, {"error": "供应商不存在"}); return
+            data = json.dumps(items, ensure_ascii=False, indent=2).encode()
+            _atomic_write(PROVIDERS_FILE, data)
+            self._send(200, found)
 
     def _delete_provider(self, pid):
-        items = load_providers()
-        new_items = [it for it in items if it.get("id") != pid]
-        if len(new_items) == len(items):
-            self._send(404, {"error": "供应商不存在"}); return
-        save_providers(new_items)
-        self._send(200, {"ok": True})
+        # 在锁内完成 读 -> 改 -> 写，避免并发修正
+        with _lock:
+            try:
+                items = load_providers()
+            except Exception as e:
+                self._send(500, {"error": f"供应商读取失败: {e}"}); return
+            new_items = [it for it in items if it.get("id") != pid]
+            if len(new_items) == len(items):
+                self._send(404, {"error": "供应商不存在"}); return
+            data = json.dumps(new_items, ensure_ascii=False, indent=2).encode()
+            _atomic_write(PROVIDERS_FILE, data)
+            self._send(200, {"ok": True})
 
     def _fetch_models(self):
         body = self._read_json_body()
