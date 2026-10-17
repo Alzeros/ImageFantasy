@@ -978,6 +978,9 @@
         <button class="icon-btn" id="openConfigBtn" type="button" title="设置">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
         </button>
+        <button class="icon-btn" id="logoutBtn" type="button" title="退出登录">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>
+        </button>
       </div>
     </header>
 
@@ -1784,7 +1787,7 @@ async function triggerInspiration(action){
   btn.innerHTML = `<span class="spin"></span><span>${expanding ? '扩写中…' : '构思中…'}</span>`;
 
   try {
-    const r = await fetch('/api/inspire', {
+    const r = await apiFetch('/api/inspire', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -2050,7 +2053,7 @@ function loadCfg(){
 /* ================= 供应商与模型数据 ================= */
 async function loadProviders(){
   try{
-    const r = await fetch('/api/providers');
+    const r = await apiFetch('/api/providers');
     if(!r.ok) throw new Error('HTTP ' + r.status);
     const list = await r.json();
     if(!Array.isArray(list)) throw new Error('返回格式异常');
@@ -2228,11 +2231,11 @@ async function saveProvider(){
   let r, saved;
   try{
     if(editingId){
-      r = await fetch('/api/providers/' + encodeURIComponent(editingId), {
+      r = await apiFetch('/api/providers/' + encodeURIComponent(editingId), {
         method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
       });
     } else {
-      r = await fetch('/api/providers', {
+      r = await apiFetch('/api/providers', {
         method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
       });
     }
@@ -2260,7 +2263,7 @@ $('pv_save').onclick = saveProvider;
 async function deleteProvider(p){
   if(!confirm(`确定删除渠道「${p.name}」吗？已生成的作品不会丢失。`)) return;
   try{
-    const r = await fetch('/api/providers/' + encodeURIComponent(p.id), { method: 'DELETE' });
+    const r = await apiFetch('/api/providers/' + encodeURIComponent(p.id), { method: 'DELETE' });
     if(!r.ok){
       let d = {}; try{ d = await r.json(); }catch(_){}
       throw new Error((d && (d.error || d.message)) || ('HTTP ' + r.status));
@@ -2283,7 +2286,7 @@ $('pv_fetch').onclick = async () => {
   const mini = $('pv_type').value === 'minimax';
   showToast(mini ? '正在载入 MiniMax 预设模型…' : '正在从接口获取模型列表…', 'info');
   try{
-    const r = await fetch('/api/fetch-models', {
+    const r = await apiFetch('/api/fetch-models', {
       method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ base, key, api_type: $('pv_type').value })
     });
     const d = await r.json().catch(() => ({}));
@@ -2406,15 +2409,42 @@ $('btn_clear_inspire_cfg').onclick = () => {
   saveInspireCfg();
 };
 
+/* ================= 登录状态 ================= */
+// 会话过期后任何接口都会返回 401：统一跳回登录页，避免所有操作都弹同一条错误。
+let redirectingToLogin = false;
+function toLogin(){
+  if(redirectingToLogin) return;
+  redirectingToLogin = true;
+  location.replace('/login');
+}
+// 统一包装 fetch：401 直接跳转登录页，其余响应原样返回。
+async function apiFetch(url, opts){
+  const r = await fetch(url, Object.assign({ credentials: 'same-origin' }, opts || {}));
+  if(r.status === 401){
+    toLogin();
+    throw new Error('登录已过期');
+  }
+  return r;
+}
+async function doLogout(){
+  if(!confirm('确定退出登录吗？')) return;
+  try{
+    await apiFetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
+  }catch(_){}
+  location.replace('/login');
+}
+$('logoutBtn').onclick = doLogout;
+
 /* ================= 服务探活：只在连接不上时提示 ================= */
 async function refreshSvc(){
   let ok = false;
   try{
-    const r = await fetch('/api/ping', { cache: 'no-store' });
+    const r = await apiFetch('/api/ping', { cache: 'no-store', credentials: 'same-origin' });
+    if(r.status === 401){ toLogin(); return; }
     const d = await r.json();
     ok = !!(d && d.ok);
   }catch(_){}
-  $('svcTxt').textContent = '无法连接本地服务，正在重试…';
+  $('svcTxt').textContent = '无法连接服务器，正在重试…';
   $('svc').classList.toggle('hide', ok);
 }
 
@@ -2549,7 +2579,7 @@ async function go(){
       if(mask) payload.mask = await fileToB64(mask);
     }
 
-    const r = await fetch('/api/generate', {
+    const r = await apiFetch('/api/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -2793,7 +2823,7 @@ function rememberRatio(id, r){
 
 async function loadGallery(){
   try {
-    const r = await fetch('/api/gallery');
+    const r = await apiFetch('/api/gallery');
     if(!r.ok) throw new Error('HTTP ' + r.status);
     const list = await r.json();
     if(!Array.isArray(list)) throw new Error('返回格式异常');
@@ -2910,7 +2940,7 @@ $('refreshGalleryBtn').onclick = async () => {
 async function deleteGalleryItem(id){
   if(!confirm('确定删除这张作品吗？将从服务器永久移除。')) return;
   try{
-    const r = await fetch('/api/gallery/' + encodeURIComponent(id), { method: 'DELETE' });
+    const r = await apiFetch('/api/gallery/' + encodeURIComponent(id), { method: 'DELETE' });
     if(!r.ok){
       let d = {}; try{ d = await r.json(); }catch(_){}
       throw new Error((d && (d.error || d.message)) || ('HTTP ' + r.status));

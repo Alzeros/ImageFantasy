@@ -176,6 +176,7 @@ class GenerationHTTPTests(unittest.TestCase):
         self.upstream = self.start_server(FakeUpstream)
         self.app = self.start_server(server.Handler)
         self.base = "http://127.0.0.1:%s/v1" % self.upstream.server_port
+        self.session = server.create_session()
 
     def start_server(self, handler):
         httpd = server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
@@ -190,8 +191,9 @@ class GenerationHTTPTests(unittest.TestCase):
 
     def request(self, method, path, body=None):
         conn = http.client.HTTPConnection("127.0.0.1", self.app.server_port, timeout=5)
-        conn.request(method, path, None if body is None else json.dumps(body),
-                     {"Content-Type": "application/json"})
+        # 测试直接注入一个有效会话，验证业务逻辑；登录流程本身在 test_auth.py 覆盖。
+        headers = {"Content-Type": "application/json", "Cookie": "if_session=" + self.session}
+        conn.request(method, path, None if body is None else json.dumps(body), headers)
         response = conn.getresponse()
         content = response.read()
         status = response.status
@@ -225,7 +227,7 @@ class GenerationHTTPTests(unittest.TestCase):
         self.assertEqual(item["output_format"], "png")
         self.assertEqual(server.load_gallery(), [item])
         conn = http.client.HTTPConnection("127.0.0.1", self.app.server_port, timeout=5)
-        conn.request("GET", item["url"])
+        conn.request("GET", item["url"], headers={"Cookie": "if_session=" + self.session})
         response = conn.getresponse()
         self.assertEqual(response.status, 200)
         self.assertEqual(response.read(), PNG)

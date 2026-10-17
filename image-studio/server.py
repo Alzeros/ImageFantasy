@@ -16,18 +16,20 @@ Image Fantasy —— 自托管图像生成 Web 应用（零依赖，仅用 Pytho
   - 服务端图库持久化：生成的图像落盘到 data/images，索引存 data/gallery.json，
     重启不丢；前端可按图库回看、删除
   - 单文件后端 + 静态前端，Docker 一键部署
+  - 账号密码登录：首次启动需用日志中的设置令牌设置账号；除登录页外的页面、图片与接口都要求登录
 
 运行（本地）：
   python3 server.py
-  # 浏览器打开 http://127.0.0.1:19150
+  # 浏览器打开 http://127.0.0.1:19150，首次使用填写终端里打印的设置令牌
 部署（Docker）：
   docker compose up -d
   # compose 中已显式设置 HOST=0.0.0.0 以便从宿主机/外部访问
 环境变量：
-  PORT  监听端口，默认 19150
-  HOST  监听地址，默认 127.0.0.1（仅本机）；对外提供服务时设为 0.0.0.0
-        ⚠ 本服务无鉴权，且 /api/providers 会明文返回上游 API Key，
-          仅建议在可信网络或反向代理鉴权之后暴露。
+  PORT             监听端口，默认 19150
+  HOST             监听地址，默认 127.0.0.1（仅本机）；对外提供服务时设为 0.0.0.0
+  PUBLIC_ORIGIN    对外访问地址，如 https://img.example.com；以 https 开头时会话 Cookie 只走 HTTPS
+  TRUSTED_PROXIES  反向代理的地址或网段（逗号分隔），只采信来自这些地址的 X-Forwarded-*
+  COOKIE_SECURE    设为 1 时强制会话 Cookie 只走 HTTPS
 """
 import http.server
 import socketserver
@@ -37,7 +39,11 @@ import urllib.request
 import urllib.error
 import urllib.parse
 import base64
+import hashlib
+import hmac
 import os
+import secrets
+import sys
 import time
 import re
 import uuid
@@ -46,8 +52,8 @@ import ipaddress
 import socket
 
 PORT = int(os.environ.get("PORT", "19150"))  # 默认高位端口
-# 默认只监听本机回环：服务端无鉴权，且 /api/providers 会明文返回上游 API Key，
-# 绑定 0.0.0.0 等于把密钥暴露给同网段任何人。需要对外提供时显式设 HOST=0.0.0.0。
+# 默认只监听本机回环。对外提供时显式设 HOST=0.0.0.0，并放在 HTTPS 反向代理之后：
+# 登录密码与会话 Cookie 不应以明文经过公网。
 HOST = os.environ.get("HOST", "127.0.0.1")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
@@ -55,6 +61,9 @@ DATA_DIR = os.environ.get("DATA_DIR", os.path.join(BASE_DIR, "data"))
 IMAGES_DIR = os.path.join(DATA_DIR, "images")
 GALLERY_FILE = os.path.join(DATA_DIR, "gallery.json")
 PROVIDERS_FILE = os.path.join(DATA_DIR, "providers.json")
+AUTH_FILE = os.path.join(DATA_DIR, "auth.json")
+SECURITY_LOG = os.path.join(DATA_DIR, "security.log")
+SETUP_TOKEN_FILE = os.path.join(DATA_DIR, "setup-token")
 # 单个请求体上限。图生图会带 base64 参考图，4096px PNG 编码后约 20-30MB，
 # 多张很容易上到几十 MB，所以留足余量；但仍要有上限，否则一个 Content-Length
 # 就能让服务端把内存吃光。
@@ -79,6 +88,77 @@ MINIMAX_MODELS = ("image-01", "image-01-live")
 MINIMAX_DEFAULT_BASE = "https://api.minimax.cn/v1"
 MINIMAX_ASPECT_RATIOS = ("1:1", "16:9", "4:3", "3:2", "2:3", "3:4", "9:16", "21:9")
 RANDOM_IDEA_MAX_CHARS = 60
+
+# ---- 登录与会话 ----
+# PBKDF2 在 Python 3.9 / 3.11 / 3.13 上均可用（hashlib.scrypt 不是所有版本都有）。
+PBKDF2_ITERATIONS = 600000
+PBKDF2_ALGO = "pbkdf2_sha256"
+SESSION_COOKIE = "if_session"
+SESSION_IDLE = 7 * 24 * 3600      # 7 天无操作自动失效（服务端判断）
+SESSION_MAX = 14 * 24 * 3600      # 无论是否活跃，14 天后必须重新登录
+LOGIN_MAX_FAILS = 5               # 同一来源连续失败次数
+LOGIN_LOCK_BASE = 60              # 首次锁定 60 秒，之后翻倍
+LOGIN_LOCK_MAX = 15 * 60          # 最长锁定 15 分钟
+LOGIN_TRACK_MAX = 10000           # 失败记录条数上限，防止被刷爆内存
+USERNAME_MAX_LEN = 64
+PASSWORD_MIN_LEN = 8
+PASSWORD_MAX_LEN = 200
+AUTH_BODY_MAX = 4096              # 登录相关接口的请求体上限
+
+
+def _parse_networks(value):
+    """把逗号分隔的 IP / 网段解析成网段列表；无效项打印提示后忽略。"""
+    networks = []
+    for item in value.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        try:
+            network = ipaddress.ip_network(item, strict=False)
+        except ValueError:
+            print("忽略无效的 TRUSTED_PROXIES 项: %s" % item)
+            continue
+        # ::ffff:a.b.c.d 形式写成 IPv4 网段，与 _ip_in 对来源地址的归一化保持一致
+        mapped = getattr(network.network_address, "ipv4_mapped", None)
+        if mapped is not None and network.prefixlen >= 96:
+            network = ipaddress.ip_network("%s/%d" % (mapped, network.prefixlen - 96), strict=False)
+        networks.append(network)
+    return tuple(networks)
+
+
+# 反向代理的地址或网段（逗号分隔，如 127.0.0.1 或 Docker 网关所在的 172.16.0.0/12）。
+# 只有来自这些地址的请求，才采信 X-Forwarded-For / X-Forwarded-Proto / X-Forwarded-Host，
+# 否则任何人都能伪造来源 IP 绕开登录锁定。直接对外暴露时留空即可。
+TRUSTED_PROXIES = _parse_networks(os.environ.get("TRUSTED_PROXIES", ""))
+# 对外访问地址（如 https://img.example.com）：用于校验跨站请求（反向代理改写 Host 时需要）
+PUBLIC_ORIGIN = os.environ.get("PUBLIC_ORIGIN", "").strip().rstrip("/")
+# 会话 Cookie 是否带 Secure（只通过 HTTPS 发送）。对外地址是 https 时自动开启
+COOKIE_SECURE = (os.environ.get("COOKIE_SECURE", "").strip().lower() in ("1", "true", "yes")
+                 or PUBLIC_ORIGIN.lower().startswith("https://"))
+
+_sessions = {}
+_sessions_lock = threading.Lock()
+_login_fails = {}                 # key -> {"fails", "first", "until"}
+_login_lock = threading.Lock()
+_auth_write_lock = threading.Lock()   # 认证文件与设置令牌的读改写
+
+
+def _ip_in(address, networks):
+    try:
+        ip = ipaddress.ip_address(address)
+    except ValueError:
+        return False
+    ip = getattr(ip, "ipv4_mapped", None) or ip
+    return any(ip in network for network in networks)
+
+
+def _strip_port(hop):
+    """X-Forwarded-For 里的地址可能带端口：1.2.3.4:443 或 [2001:db8::1]:443。"""
+    if hop.startswith("["):
+        return hop[1:hop.find("]")] if "]" in hop else hop
+    if hop.count(":") == 1:
+        return hop.split(":", 1)[0]
+    return hop
 
 
 # ---- 安全与原子写辅助 ----
@@ -145,6 +225,326 @@ def _atomic_write(filepath: str, content: bytes) -> None:
     finally:
         os.close(fd)
     os.replace(tmp, filepath)
+
+
+def _atomic_write_private(filepath, content):
+    """原子写入并收紧为仅属主可读写：认证文件含密码哈希，不能随默认 umask 放宽。"""
+    filepath_dir = os.path.dirname(filepath) or "."
+    fd, tmp = tempfile.mkstemp(dir=filepath_dir, prefix=".tmp_")
+    try:
+        os.fchmod(fd, 0o600)
+        os.write(fd, content)
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    os.replace(tmp, filepath)
+
+
+def _create_private_exclusive(filepath, content):
+    """仅当文件不存在时创建（原子、0600）；已存在则抛 FileExistsError。
+
+    先写临时文件再 os.link：link 在目标已存在时失败，保证并发的首次设置只有一个能成功，
+    且读者永远不会看到写了一半的文件。文件系统不支持硬链接时（部分网络盘），
+    退回 O_EXCL 直接创建，仍然只有一个能成功。
+    """
+    filepath_dir = os.path.dirname(filepath) or "."
+    fd, tmp = tempfile.mkstemp(dir=filepath_dir, prefix=".tmp_")
+    linked = False
+    try:
+        os.fchmod(fd, 0o600)
+        os.write(fd, content)
+        os.fsync(fd)
+        os.close(fd)
+        fd = None
+        try:
+            os.link(tmp, filepath)
+            linked = True
+        except FileExistsError:
+            raise
+        except OSError:
+            pass
+    finally:
+        if fd is not None:
+            os.close(fd)
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+    if not linked:
+        fd = os.open(filepath, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        try:
+            os.write(fd, content)
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+
+
+# ---- 登录：账号密码哈希、会话与失败锁定 ----
+
+def hash_password(password, iterations=PBKDF2_ITERATIONS, salt=None):
+    """返回可持久化的密码哈希记录（只存 salt 与派生值，绝不存明文）。"""
+    salt = salt or secrets.token_bytes(16)
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations, dklen=32)
+    return {
+        "algo": PBKDF2_ALGO,
+        "iterations": iterations,
+        "salt": base64.b64encode(salt).decode("ascii"),
+        "hash": base64.b64encode(dk).decode("ascii"),
+    }
+
+
+def verify_password(password, record):
+    """常数时间比较；算法/字段不合法一律视为不匹配，不抛错。"""
+    try:
+        if not isinstance(password, str) or not isinstance(record, dict):
+            return False
+        if record.get("algo") != PBKDF2_ALGO:
+            return False
+        iterations = int(record.get("iterations") or 0)
+        if not 10000 <= iterations <= PBKDF2_ITERATIONS * 2:
+            return False
+        salt = base64.b64decode(record.get("salt") or "")
+        expected = base64.b64decode(record.get("hash") or "")
+        if len(expected) != 32 or len(salt) < 8:
+            return False
+        dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations, dklen=32)
+        return hmac.compare_digest(dk, expected)
+    except Exception:
+        return False
+
+
+def validate_username(username):
+    """返回错误信息；合法返回 None。"""
+    if not isinstance(username, str) or not username.strip():
+        return "请填写账号"
+    if len(username) > USERNAME_MAX_LEN:
+        return "账号最多 %d 个字符" % USERNAME_MAX_LEN
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in username):
+        return "账号不能包含控制字符"
+    try:
+        username.encode("utf-8")
+    except UnicodeEncodeError:
+        return "账号包含无效字符"
+    return None
+
+
+def validate_password(password):
+    """返回错误信息；合法返回 None。"""
+    if not isinstance(password, str):
+        return "密码格式不正确"
+    if len(password) < PASSWORD_MIN_LEN:
+        return "密码至少 %d 个字符" % PASSWORD_MIN_LEN
+    if len(password) > PASSWORD_MAX_LEN:
+        return "密码最长 %d 个字符" % PASSWORD_MAX_LEN
+    if password != password.strip():
+        return "密码首尾不能是空白字符"
+    if password.isdigit() or password.isalpha():
+        return "密码不能是纯数字或纯字母，建议混合字母、数字和符号"
+    try:
+        password.encode("utf-8")
+    except UnicodeEncodeError:
+        return "密码包含无效字符"
+    return None
+
+
+def auth_configured():
+    return os.path.isfile(AUTH_FILE)
+
+
+def _load_auth():
+    """读取认证记录；文件损坏时抛错，绝不静默当成“未配置”而允许重设密码。"""
+    with open(AUTH_FILE, "r", encoding="utf-8") as f:
+        record = json.load(f)
+    if not isinstance(record, dict) or not record.get("password"):
+        raise ValueError("认证文件格式不正确")
+    return record
+
+
+def _save_auth(record):
+    _atomic_write_private(AUTH_FILE, json.dumps(record, ensure_ascii=False, indent=2).encode("utf-8"))
+
+
+def ensure_setup_token():
+    """未设置账号时确保存在一次性设置令牌（data/setup-token，0600），并返回它。
+
+    没有令牌，任何先访问到服务的人都能抢先设置账号。令牌只能从服务器本机文件或
+    启动日志中拿到，只有部署者能完成首次设置。账号设置好后令牌文件即被删除。
+    令牌以文件为准（不缓存在内存里），删除 auth.json 重设密码时也会重新生成。
+    """
+    with _auth_write_lock:
+        if auth_configured():
+            try:
+                os.unlink(SETUP_TOKEN_FILE)
+            except OSError:
+                pass
+            return ""
+        token = ""
+        try:
+            with open(SETUP_TOKEN_FILE, "r", encoding="utf-8") as f:
+                token = f.read().strip()
+        except OSError:
+            pass
+        if len(token) < 16:
+            token = secrets.token_urlsafe(18)
+            _atomic_write_private(SETUP_TOKEN_FILE, (token + "\n").encode("utf-8"))
+        return token
+
+
+def _check_setup_token(candidate):
+    token = ensure_setup_token()
+    if not token or not isinstance(candidate, str) or not candidate.strip():
+        return False
+    try:
+        return hmac.compare_digest(candidate.strip().encode("utf-8"), token.encode("utf-8"))
+    except UnicodeEncodeError:
+        return False
+
+
+def create_session():
+    token = secrets.token_urlsafe(32)
+    now = time.time()
+    with _sessions_lock:
+        _purge_sessions_locked(now)
+        _sessions[token] = {"created": now, "seen": now}
+    return token
+
+
+def check_session(token):
+    """校验会话并刷新最近活动时间；过期即删除。
+
+    空闲期限只在服务端判断，Cookie 本身用固定的最长有效期，因此不需要在响应里续发 Cookie。
+    （续发 Cookie 曾挂在连接对象上，经反向代理复用连接时会串到别的请求里。）
+    """
+    if not token or not isinstance(token, str):
+        return False
+    now = time.time()
+    with _sessions_lock:
+        sess = _sessions.get(token)
+        if sess is None:
+            return False
+        if now - sess["created"] > SESSION_MAX or now - sess["seen"] > SESSION_IDLE:
+            del _sessions[token]
+            return False
+        sess["seen"] = now
+        return True
+
+
+def destroy_session(token):
+    if not token:
+        return
+    with _sessions_lock:
+        _sessions.pop(token, None)
+
+
+def destroy_all_sessions():
+    """改密码后让所有旧会话失效（单账号应用，全部清空即可）。"""
+    with _sessions_lock:
+        _sessions.clear()
+
+
+def _purge_sessions_locked(now):
+    dead = [k for k, v in _sessions.items()
+            if now - v["created"] > SESSION_MAX or now - v["seen"] > SESSION_IDLE]
+    for k in dead:
+        del _sessions[k]
+
+
+def _rate_source(ip):
+    """限流用的来源：IPv6 按 /64 网段计，一个用户通常就能分到整段地址，逐个换地址绕不开锁定。"""
+    try:
+        address = ipaddress.ip_address(ip)
+    except ValueError:
+        return ip or "-"
+    address = getattr(address, "ipv4_mapped", None) or address
+    if address.version == 6:
+        return str(ipaddress.ip_network("%s/64" % address, strict=False))
+    return str(address)
+
+
+def login_key(username, ip):
+    """失败次数按「账号 + 来源」计，并额外按来源单计，避免换账号绕过锁定。
+
+    账号先截断再入键，避免超长账号撑大内存。
+    """
+    name = (username or "")[:USERNAME_MAX_LEN].lower()
+    source = _rate_source(ip)
+    return ["u:%s|%s" % (name, source), "ip:%s" % source]
+
+
+def login_locked_for(keys):
+    """返回剩余锁定秒数（0 表示未锁定）。"""
+    now = time.time()
+    wait = 0
+    with _login_lock:
+        for key in keys:
+            rec = _login_fails.get(key)
+            if rec and rec.get("until", 0) > now:
+                wait = max(wait, int(rec["until"] - now) + 1)
+    return wait
+
+
+def record_login_failure(keys):
+    now = time.time()
+    with _login_lock:
+        _purge_login_locked(now)
+        for key in keys:
+            rec = _login_fails.get(key)
+            if rec is None:
+                if len(_login_fails) >= LOGIN_TRACK_MAX:
+                    # 记录表已满：优先丢掉未处于锁定状态的最早记录，保证内存有上限，
+                    # 同时不让攻击者靠刷新记录把正在锁定的来源挤出去
+                    unlocked = [k for k, v in _login_fails.items() if v.get("until", 0) <= now]
+                    victims = unlocked or list(_login_fails)
+                    del _login_fails[min(victims, key=lambda k: _login_fails[k]["first"])]
+                rec = _login_fails[key] = {"fails": 0, "first": now, "until": 0}
+            # 十分钟内没有新的失败就重新计数
+            if now - rec["first"] > 600:
+                rec["fails"], rec["first"] = 0, now
+            rec["fails"] += 1
+            if rec["fails"] >= LOGIN_MAX_FAILS:
+                extra = rec["fails"] - LOGIN_MAX_FAILS
+                lock = min(LOGIN_LOCK_BASE * (2 ** min(extra, 10)), LOGIN_LOCK_MAX)
+                rec["until"] = now + lock
+
+
+def clear_login_failures(keys):
+    with _login_lock:
+        for key in keys:
+            _login_fails.pop(key, None)
+
+
+def _purge_login_locked(now):
+    dead = [k for k, v in _login_fails.items() if v.get("until", 0) < now and now - v["first"] > 3600]
+    for k in dead:
+        del _login_fails[k]
+
+
+def _log_safe(value, limit=64):
+    """日志字段：数字原样；文本去掉换行等控制字符、截断并加引号，防止伪造日志行或混淆字段。"""
+    if isinstance(value, int):
+        return str(value)
+    text = "".join(ch if ch.isprintable() else "?" for ch in str(value))
+    text = text[:limit] + ("…" if len(text) > limit else "")
+    return json.dumps(text, ensure_ascii=False)
+
+
+def log_security(message, *args):
+    """把登录相关事件写进独立的 security.log（仅属主可读；不记录密码或 Cookie）。"""
+    try:
+        path = SECURITY_LOG
+        try:
+            if os.path.getsize(path) > LOG_MAX_BYTES:
+                os.replace(path, path + ".1")
+        except OSError:
+            pass
+        line = message % tuple(_log_safe(a) for a in args) if args else message
+        fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+        # 旧版本可能已经以 0644 创建过这个文件：每次写入时收紧权限
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "a", encoding="utf-8") as f:
+            f.write("[%s] %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), line))
+    except Exception:
+        pass
 
 
 # ---- 图库持久化（原子写 + 错误不静默） ----
@@ -415,12 +815,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
     # 没有超时就等于一个慢客户端/半开连接可以永久占住一个线程。
     timeout = 120
 
-    def _send(self, code, obj=None, ctype="application/json", body=None):
+    def _send(self, code, obj=None, ctype="application/json", body=None, headers=None):
         if body is None:
             body = json.dumps(obj, ensure_ascii=False).encode("utf-8") if obj is not None else b""
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(body)
 
@@ -449,6 +851,353 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header("Connection", "close")
         self.end_headers()
 
+    # ---- 登录接口 ----
+
+    def _read_auth_body(self):
+        """登录相关接口只接受小体积的 JSON 对象；其余一律视为格式错误。"""
+        try:
+            length = int(self.headers.get("Content-Length", 0) or 0)
+        except ValueError:
+            return None
+        if length < 0 or length > AUTH_BODY_MAX:
+            # 不读超大请求体，直接关闭连接
+            self.close_connection = True
+            return None
+        try:
+            body = json.loads(self.rfile.read(length) or b"{}")
+        except Exception:
+            return None
+        return body if isinstance(body, dict) else None
+
+    @staticmethod
+    def _str_field(body, name):
+        value = body.get(name)
+        return value if isinstance(value, str) else ""
+
+    def _auth_status(self):
+        configured = auth_configured()
+        if not configured:
+            # 删除 auth.json 重设账号时无需重启：打开登录页即在服务器上重新生成设置令牌
+            try:
+                ensure_setup_token()
+            except Exception:
+                pass
+        self._send(200, {
+            "configured": configured,
+            "logged_in": configured and self._session_valid(),
+        }, headers={"Cache-Control": "no-store"})
+
+    def _auth_setup(self):
+        """首次设置账号需要一次性设置令牌；已设置时只能在登录状态下用当前密码修改。"""
+        if not self._csrf_ok():
+            self._send(403, {"error": "跨站请求被拒绝"}); return
+        body = self._read_auth_body()
+        if body is None:
+            self._send(400, {"error": "请求格式不正确"}); return
+        username = self._str_field(body, "username").strip()
+        password = self._str_field(body, "password")
+        err = validate_username(username) or validate_password(password)
+        if err:
+            self._send(400, {"error": err}); return
+
+        ip = self._client_ip()
+        keys = login_key(username, ip)
+        wait = login_locked_for(keys)
+        if wait:
+            self._send(429, {"error": "尝试次数过多，请 %d 秒后再试" % wait, "retry_after": wait},
+                       headers={"Retry-After": str(wait)})
+            return
+
+        try:
+            configured = auth_configured()
+            old_record = _load_auth() if configured else None
+        except Exception:
+            self._send(500, {"error": "认证文件损坏，请检查服务器上的 data/auth.json"}); return
+
+        if configured:
+            if not self._session_valid():
+                self._send(401, {"error": "未登录，不能修改密码"}); return
+            # 改密码需要提供当前密码，并计入失败次数，防止会话被借用后暴力猜测
+            if not verify_password(self._str_field(body, "current_password"), old_record["password"]):
+                record_login_failure(keys)
+                log_security("修改密码失败（当前密码错误） 来源=%s", ip)
+                self._send(400, {"error": "当前密码不正确"}); return
+        else:
+            try:
+                token_ok = _check_setup_token(self._str_field(body, "setup_token"))
+            except OSError as e:
+                log_security("读取设置令牌失败: %s", e)
+                self._send(500, {"error": "无法读取设置令牌，请检查服务器 data 目录的写入权限"}); return
+            if not token_ok:
+                record_login_failure(keys)
+                log_security("首次设置失败（设置令牌错误） 来源=%s", ip)
+                self._send(403, {"error": "设置令牌不正确。请在服务器上查看启动日志或 data/setup-token 文件"}); return
+
+        now_ms = int(time.time() * 1000)
+        record = {
+            "version": 1,
+            "username": username,
+            "password": hash_password(password),
+            "created": (old_record or {}).get("created", now_ms),
+            "updated": now_ms,
+        }
+        data = json.dumps(record, ensure_ascii=False, indent=2).encode("utf-8")
+        try:
+            with _auth_write_lock:
+                if configured:
+                    _atomic_write_private(AUTH_FILE, data)
+                else:
+                    # 原子地「仅当不存在时创建」：并发的首次设置只会有一个成功
+                    _create_private_exclusive(AUTH_FILE, data)
+        except FileExistsError:
+            self._send(409, {"error": "账号已被设置，请刷新页面后登录"}); return
+        except Exception as e:
+            log_security("保存认证信息失败: %s", e)
+            self._send(500, {"error": "保存认证信息失败，请检查服务器 data 目录的写入权限"}); return
+
+        ensure_setup_token()          # 已设置账号：删除设置令牌文件
+        clear_login_failures(keys)
+        destroy_all_sessions()
+        token = create_session()
+        log_security(("修改密码" if configured else "设置登录账号") + " 账号=%s 来源=%s", username, ip)
+        self._send(200, {"ok": True, "username": username},
+                   headers={"Set-Cookie": self._session_cookie(token)})
+
+    def _auth_login(self):
+        if not self._csrf_ok():
+            self._send(403, {"error": "跨站请求被拒绝"}); return
+        body = self._read_auth_body()
+        if body is None:
+            self._send(400, {"error": "请求格式不正确"}); return
+        if not auth_configured():
+            self._send(400, {"error": "还没有设置登录账号", "setup": True}); return
+        username = self._str_field(body, "username").strip()[:USERNAME_MAX_LEN]
+        password = self._str_field(body, "password")[:PASSWORD_MAX_LEN]
+        ip = self._client_ip()
+        keys = login_key(username, ip)
+        wait = login_locked_for(keys)
+        if wait:
+            log_security("登录被锁定 %ss 来源=%s 账号=%s", wait, ip, username)
+            self._send(429, {"error": "尝试次数过多，请 %d 秒后再试" % wait,
+                             "retry_after": wait}, headers={"Retry-After": str(wait)})
+            return
+        try:
+            record = _load_auth()
+        except Exception:
+            self._send(500, {"error": "认证文件损坏，请检查服务器上的 data/auth.json"}); return
+
+        try:
+            username_ok = hmac.compare_digest(
+                (record.get("username") or "").encode("utf-8"), username.encode("utf-8"))
+        except UnicodeEncodeError:
+            username_ok = False
+        # 账号不对时同样计算一次哈希，响应时间不暴露账号是否存在
+        password_ok = verify_password(password, record.get("password"))
+        if not (username_ok and password_ok):
+            record_login_failure(keys)
+            log_security("登录失败 来源=%s 账号=%s", ip, username)
+            # 不区分「账号不存在」和「密码错误」，避免被用来枚举账号
+            self._send(401, {"error": "账号或密码不正确"}); return
+
+        clear_login_failures(keys)
+        token = create_session()
+        log_security("登录成功 来源=%s 账号=%s", ip, username)
+        self._send(200, {"ok": True, "username": record.get("username")},
+                   headers={"Set-Cookie": self._session_cookie(token)})
+
+    def _auth_logout(self):
+        if not self._csrf_ok():
+            self._send(403, {"error": "跨站请求被拒绝"}); return
+        destroy_session(self._request_cookie())
+        parts = ["%s=" % SESSION_COOKIE, "Path=/", "HttpOnly", "SameSite=Lax", "Max-Age=0"]
+        if self._is_https():
+            parts.append("Secure")
+        self._send(200, {"ok": True}, headers={"Set-Cookie": "; ".join(parts)})
+
+    # ---- 安全响应头、登录校验 ----
+
+    def end_headers(self):
+        # 所有响应统一带上这些头（图片、静态文件、接口和流式响应都一样）。
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Cross-Origin-Resource-Policy", "same-origin")
+        self.send_header("Content-Security-Policy",
+                         "default-src 'self'; img-src 'self' data: blob:; "
+                         "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; "
+                         "connect-src 'self'; object-src 'none'; base-uri 'none'; "
+                         "form-action 'self'; frame-ancestors 'none'")
+        if self._is_https():
+            self.send_header("Strict-Transport-Security", "max-age=31536000")
+        super().end_headers()
+
+    def _request_cookie(self):
+        """自行解析 Cookie 头：标准库 SimpleCookie 遇到别的站点写入的特殊 Cookie 会整串放弃。"""
+        for part in (self.headers.get("Cookie") or "").split(";"):
+            name, sep, value = part.strip().partition("=")
+            if sep and name == SESSION_COOKIE:
+                return value.strip().strip('"')
+        return ""
+
+    def _from_trusted_proxy(self):
+        # 请求行解析失败时（如 414）还没有 headers，此时按非代理处理
+        if not TRUSTED_PROXIES or getattr(self, "headers", None) is None or not self.client_address:
+            return False
+        return _ip_in(self.client_address[0], TRUSTED_PROXIES)
+
+    def _is_https(self):
+        if COOKIE_SECURE:
+            return True
+        if self._from_trusted_proxy():
+            return self.headers.get("X-Forwarded-Proto", "").split(",")[0].strip().lower() == "https"
+        return False
+
+    def _client_ip(self):
+        """限流用的来源 IP。只有请求来自配置的反向代理时，才采信代理转发的头；
+        否则这些头可被任意伪造，用来绕过锁定。"""
+        direct = self.client_address[0] if self.client_address else "-"
+        if not self._from_trusted_proxy():
+            return direct
+        forwarded = [h.strip() for h in (self.headers.get("X-Forwarded-For") or "").split(",") if h.strip()]
+        real = (self.headers.get("X-Real-IP") or "").strip()
+        # 从右往左取第一个不属于可信代理的地址：最左侧由客户端自己填写，可伪造
+        candidates = list(reversed(forwarded)) or ([real] if real else [])
+        for hop in candidates:
+            address = _strip_port(hop)
+            if _ip_in(address, TRUSTED_PROXIES):
+                continue
+            try:
+                return str(ipaddress.ip_address(address))
+            except ValueError:
+                break
+        return direct
+
+    def _session_valid(self):
+        return check_session(self._request_cookie())
+
+    def _session_cookie(self, token):
+        parts = ["%s=%s" % (SESSION_COOKIE, token), "Path=/", "HttpOnly", "SameSite=Lax",
+                 "Max-Age=%d" % SESSION_MAX]
+        if self._is_https():
+            parts.append("Secure")
+        return "; ".join(parts)
+
+    def _csrf_ok(self):
+        """写操作校验来源：跨站页面伪造的请求在这里被挡掉。
+
+        SameSite=Lax Cookie 已经能挡住绝大多数跨站 POST，这一层是兜底。
+        浏览器发出的请求带 Origin（或 Sec-Fetch-Site）；没有这两个头的是 curl 等非浏览器客户端，
+        它们拿不到受害者的 Cookie，由会话本身保护。
+        """
+        site = (self.headers.get("Sec-Fetch-Site") or "").strip().lower()
+        if site == "cross-site":
+            return False         # 浏览器明确标记为跨站，不管 Origin 写的是什么
+        if site in ("same-origin", "none"):
+            return True
+        origin = (self.headers.get("Origin") or "").strip()
+        if not origin:
+            return True          # 浏览器的跨站请求一定带 Origin 或 Sec-Fetch-Site
+        if origin == "null":
+            return False
+        try:
+            o = urllib.parse.urlparse(origin.lower())
+        except ValueError:
+            return False
+        if o.scheme not in ("http", "https") or not o.netloc:
+            return False
+        if PUBLIC_ORIGIN and origin.lower().rstrip("/") == PUBLIC_ORIGIN.lower():
+            return True
+        # 已知本站走 HTTPS 时，同一域名的 http 页面也不能代为提交
+        if self._is_https() and o.scheme != "https":
+            return False
+        hosts = {(self.headers.get("Host") or "").lower()}
+        if self._from_trusted_proxy():
+            forwarded = (self.headers.get("X-Forwarded-Host") or "").split(",")[0].strip().lower()
+            if forwarded:
+                hosts.add(forwarded)
+        return o.netloc in hosts
+
+    def _require_login(self, write=False):
+        """未登录时返回 401；页面与登录接口不走这里。"""
+        if not self._session_valid():
+            self._send(401, {"error": "未登录或登录已过期，请重新登录", "login": "/login"},
+                       headers={"Cache-Control": "no-store"})
+            return False
+        if write and not self._csrf_ok():
+            self._send(403, {"error": "跨站请求被拒绝"}); return False
+        return True
+
+    def _serve_image(self, p):
+        fname = os.path.basename(p)
+        fpath = os.path.join(IMAGES_DIR, fname)
+        if not os.path.isfile(fpath):
+            self._send(404, {"error": "not found"}); return
+        ext = fname.rsplit(".", 1)[-1].lower()
+        ctype = {"png": "image/png", "jpeg": "image/jpeg", "jpg": "image/jpeg",
+                 "webp": "image/webp"}.get(ext, "application/octet-stream")
+        self._send_file(fpath, ctype)
+
+    def _serve_static(self, p):
+        fpath = os.path.normpath(os.path.join(STATIC_DIR, p[len("/static/"):]))
+        if not fpath.startswith(STATIC_DIR):
+            self._send(403, {"error": "forbidden"}); return
+        ctype = "text/html; charset=utf-8"
+        if fpath.endswith(".js"): ctype = "text/javascript; charset=utf-8"
+        elif fpath.endswith(".css"): ctype = "text/css; charset=utf-8"
+        elif fpath.endswith(".svg"): ctype = "image/svg+xml"
+        elif fpath.endswith(".ico"): ctype = "image/vnd.microsoft.icon"
+        self._send_file(fpath, ctype)
+
+    def do_GET(self):
+        p = urllib.parse.urlparse(self.path).path
+        # 未登录也要能打开登录页、取登录页资源、查询登录状态
+        if p == "/api/auth/status":
+            self._auth_status(); return
+        if p == "/login":
+            self._send_file(os.path.join(STATIC_DIR, "login.html"), "text/html; charset=utf-8"); return
+        if p in ("/", "/index.html"):
+            # 已登录直接进应用；未登录（或会话过期）先到登录页
+            page = "index.html" if self._session_valid() else "login.html"
+            self._send_file(os.path.join(STATIC_DIR, page), "text/html; charset=utf-8"); return
+        if p == "/favicon.ico":
+            self._send_file(os.path.join(STATIC_DIR, "favicon.ico"), "image/vnd.microsoft.icon"); return
+        if p in ("/static/login.css", "/static/login.js", "/static/favicon.svg"):
+            self._serve_static(p); return
+
+        # 其余接口与图片一律要求登录；前端页面本身也只在已登录时下发
+        if p.startswith("/api/") or p.startswith("/images/"):
+            if not self._require_login():
+                return
+            no_store = {"Cache-Control": "no-store"}
+            if p == "/api/auth/me":
+                self._send(200, {"ok": True}, headers=no_store); return
+            if p == "/api/gallery":
+                try:
+                    self._send(200, load_gallery(), headers=no_store)
+                except Exception as e:
+                    self._send(500, {"error": str(e)})
+                return
+            if p == "/api/providers":
+                # 含上游 API Key，任何缓存都不能保存
+                try:
+                    self._send(200, load_providers(), headers=no_store)
+                except Exception as e:
+                    self._send(500, {"error": str(e)})
+                return
+            if p == "/api/ping":
+                self._send(200, {"ok": True, "time": int(time.time() * 1000)}, headers=no_store); return
+            if p.startswith("/images/"):
+                self._serve_image(p); return
+            self._send(404, {"error": "not found"}); return
+
+        if p.startswith("/static/"):
+            if not self._require_login():
+                return
+            self._serve_static(p); return
+        self._send(404, {"error": "not found"})
+
+    # ---- NDJSON 流式响应辅助（手动实现 chunked 传输） ----
+
     def _emit(self, obj):
         line = (json.dumps(obj, ensure_ascii=False) + "\n").encode("utf-8")
         self.wfile.write(("%X\r\n" % len(line)).encode("ascii") + line + b"\r\n")
@@ -458,47 +1207,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(b"0\r\n\r\n")
         self.wfile.flush()
 
-    def do_GET(self):
-        parsed = urllib.parse.urlparse(self.path)
-        p = parsed.path
-        if p in ("/", "/index.html"):
-            self._send_file(os.path.join(STATIC_DIR, "index.html"), "text/html; charset=utf-8")
-        elif p == "/favicon.ico":
-            self._send_file(os.path.join(STATIC_DIR, "favicon.ico"), "image/vnd.microsoft.icon")
-        elif p.startswith("/static/"):
-            fpath = os.path.normpath(os.path.join(STATIC_DIR, p[len("/static/"):]))
-            if not fpath.startswith(STATIC_DIR):
-                self._send(403, {"error": "forbidden"}); return
-            ctype = "text/html; charset=utf-8"
-            if fpath.endswith(".js"): ctype = "text/javascript; charset=utf-8"
-            elif fpath.endswith(".css"): ctype = "text/css; charset=utf-8"
-            elif fpath.endswith(".svg"): ctype = "image/svg+xml"
-            elif fpath.endswith(".ico"): ctype = "image/vnd.microsoft.icon"
-            self._send_file(fpath, ctype)
-        elif p.startswith("/images/"):
-            fname = os.path.basename(p)
-            fpath = os.path.join(IMAGES_DIR, fname)
-            if not os.path.isfile(fpath):
-                self._send(404, {"error": "not found"}); return
-            ext = fname.rsplit(".", 1)[-1].lower()
-            ctype = {"png": "image/png", "jpeg": "image/jpeg", "jpg": "image/jpeg", "webp": "image/webp"}.get(ext, "application/octet-stream")
-            self._send_file(fpath, ctype)
-        elif p == "/api/gallery":
-            try:
-                self._send(200, load_gallery())
-            except Exception as e:
-                self._send(500, {"error": str(e)})
-        elif p == "/api/providers":
-            try:
-                self._send(200, load_providers())
-            except Exception as e:
-                self._send(500, {"error": str(e)})
-        elif p == "/api/ping":
-            self._send(200, {"ok": True, "time": int(time.time() * 1000)})
-        else:
-            self._send(404, {"error": "not found"})
-
     def do_DELETE(self):
+        if not self._require_login(write=True):
+            return
         parsed = urllib.parse.urlparse(self.path)
         m = re.match(r"^/api/providers/([^/]+)$", parsed.path)
         if m:
@@ -534,6 +1245,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self._send(200, {"ok": True})
 
     def do_PUT(self):
+        if not self._require_login(write=True):
+            return
         parsed = urllib.parse.urlparse(self.path)
         m = re.match(r"^/api/providers/([^/]+)$", parsed.path)
         if not m:
@@ -542,6 +1255,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):
         p = urllib.parse.urlparse(self.path).path
+        # 登录相关接口不要求会话
+        if p == "/api/auth/setup":
+            self._auth_setup(); return
+        if p == "/api/auth/login":
+            self._auth_login(); return
+        if p == "/api/auth/logout":
+            self._auth_logout(); return
+        if not self._require_login(write=True):
+            return
         if p == "/api/providers":
             self._create_provider(); return
         if p == "/api/fetch-models":
@@ -958,11 +1680,21 @@ if __name__ == "__main__":
         shown = "127.0.0.1" if HOST in ("127.0.0.1", "localhost") else HOST
         print("Image Fantasy 已启动 ->  http://%s:%d" % (shown, PORT))
         print("图库目录: %s" % DATA_DIR)
-        if HOST not in ("127.0.0.1", "localhost"):
-            print("⚠ 警告: 当前监听 %s 且服务无鉴权，/api/providers 会返回明文 API Key。" % HOST)
-            print("   仅建议在可信网络或有反向代理鉴权的情况下这样运行。")
-        else:
-            print("按 Ctrl+C 退出。")
+        setup_token = ensure_setup_token()
+        if setup_token:
+            print("")
+            print("首次使用：打开页面设置登录账号，需要填写下面的设置令牌（只在服务器上可见）：")
+            print("    设置令牌: %s" % setup_token)
+            print("    也保存在 %s，设置完成后自动删除。" % SETUP_TOKEN_FILE)
+            print("")
+        if HOST not in ("127.0.0.1", "localhost") and not COOKIE_SECURE:
+            print("提示: 当前监听 %s。对公网开放时请放在 HTTPS 反向代理之后，" % HOST)
+            print("      并设置 PUBLIC_ORIGIN=https://你的域名，否则密码与会话 Cookie 会以明文经过网络。")
+        if TRUSTED_PROXIES:
+            print("信任的反向代理: %s" % ", ".join(str(n) for n in TRUSTED_PROXIES))
+        print("按 Ctrl+C 退出。")
+        # Docker 下 stdout 不是终端，默认整块缓冲：立即刷出，设置令牌才能马上出现在 docker logs 里
+        sys.stdout.flush()
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:

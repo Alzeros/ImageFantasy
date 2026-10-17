@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>登录 · Image Fantasy</title>
+<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml" sizes="any">
+<link rel="stylesheet" href="/static/login.css">
+</head>
+<body>
+<main class="card">
+  <div class="brand">
+    <svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 .8Q8.9 7.1 15.2 8 8.9 8.9 8 15.2 7.1 8.9.8 8 7.1 7.1 8 .8Z" fill="currentColor"/></svg>
+    Image Fantasy
+  </div>
+
+  <div id="loading" class="state">正在检查登录状态…</div>
+
+  <!-- 首次使用：设置账号密码 -->
+  <form id="setupForm" class="hide" novalidate>
+    <h1>设置登录账号</h1>
+    <p class="desc">这是第一次启动，请设置一个账号和密码。设置令牌只有服务器能看到，在启动日志或 <code>data/setup-token</code> 文件里。</p>
+    <label class="field">
+      <span>设置令牌</span>
+      <input id="setupToken" name="setup_token" autocomplete="off" spellcheck="false" maxlength="128" required>
+    </label>
+    <label class="field">
+      <span>账号</span>
+      <input id="setupUser" name="username" autocomplete="username" maxlength="64" required>
+    </label>
+    <label class="field">
+      <span>密码</span>
+      <input id="setupPass" name="password" type="password" autocomplete="new-password" minlength="8" maxlength="200" required>
+      <small>至少 8 个字符，不能是纯数字或纯字母</small>
+    </label>
+    <label class="field">
+      <span>确认密码</span>
+      <input id="setupPass2" type="password" autocomplete="new-password" maxlength="200" required>
+    </label>
+    <p class="error hide" id="setupError" role="alert"></p>
+    <button class="primary" id="setupBtn" type="submit">设置并进入</button>
+    <p class="note">密码只保存加密后的哈希，无法找回。忘记密码时，删除服务器上的 <code>data/auth.json</code> 并重启服务，再用新的设置令牌重新设置。</p>
+  </form>
+
+  <!-- 已设置：登录 -->
+  <form id="loginForm" class="hide" novalidate>
+    <h1>登录</h1>
+    <p class="desc">输入账号和密码以访问 Image Fantasy。</p>
+    <label class="field">
+      <span>账号</span>
+      <input id="loginUser" name="username" autocomplete="username" maxlength="64" required autofocus>
+    </label>
+    <label class="field">
+      <span>密码</span>
+      <input id="loginPass" name="password" type="password" autocomplete="current-password" maxlength="200" required>
+    </label>
+    <p class="error hide" id="loginError" role="alert"></p>
+    <button class="primary" id="loginBtn" type="submit">登录</button>
+  </form>
+
+  <footer class="foot">连续输错密码会暂时锁定登录。请通过 HTTPS 访问本站。</footer>
+</main>
+<script src="/static/login.js"></script>
+</body>
+</html>

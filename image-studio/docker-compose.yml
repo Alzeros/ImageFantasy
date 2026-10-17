@@ -5,15 +5,17 @@ services:
     container_name: image-fantasy
     restart: unless-stopped
     ports:
-      - "19150:19150"
+      # 只监听服务器本机，由 HTTPS 反向代理（Caddy / Nginx）对外提供
+      - "127.0.0.1:19150:19150"
     environment:
       - PORT=19150
-      # 容器内必须监听 0.0.0.0，否则宿主机映射的端口连不上。
-      # ⚠ 服务本身无鉴权，且 /api/providers 明文返回上游 API Key。
-      #   若部署在公网服务器，请把 ports 改为 "127.0.0.1:19150:19150"
-      #   并用 Nginx/Caddy 等反向代理加上鉴权后再对外暴露。
+      # 容器内必须监听 0.0.0.0，否则宿主机映射的端口连不上
       - HOST=0.0.0.0
       - DATA_DIR=/data
+      # 对外访问地址；https 开头时登录 Cookie 只通过 HTTPS 发送
+      # - PUBLIC_ORIGIN=https://img.example.com
+      # 反向代理经端口映射访问时，容器看到的来源是 Docker 网关，只采信这些地址转发的来源 IP
+      - TRUSTED_PROXIES=172.16.0.0/12
     volumes:
-      # 图库持久化：生成的图片与索引存在宿主机 ./data，重启不丢
+      # 账号、渠道配置与图库都存在宿主机 ./data，重启不丢
       - ./data:/data
