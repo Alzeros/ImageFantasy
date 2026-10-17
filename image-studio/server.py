@@ -4,7 +4,7 @@
 Image Fantasy —— 自托管图像生成 Web 应用（零依赖，仅用 Python 标准库）
 
 特性：
-  - 对接任意 OpenAI 兼容图像 API（gpt-image-1 及各类兼容渠道 / 代理）
+  - 对接 OpenAI 兼容图像 API，以及 MiniMax 原生图片 API
   - 全参数暴露：prompt / size / n / output_format / output_compression /
     response_format / watermark / prompt_extend(提示词润色) / 参考图编辑(edit)
     （尺寸等取值范围由前端控件约束，服务端不做二次校验，原样透传给上游）
@@ -65,37 +65,74 @@ os.makedirs(IMAGES_DIR, exist_ok=True)
 
 _lock = threading.RLock()  # 重入锁：load_gallery + save_gallery 可以嵌套调用
 
+# 部分本机代理会把公网域名映射到这些 Fake-IP 段，再由代理转发实际请求。
+# 仅为已知的图片存储域名兼容这种解析；绝不放行直接使用这些 IP 的 URL，
+# 也不把任意域名解析出的私网地址都当成代理地址。
+_PROXY_DNS_NETWORKS = (
+    ipaddress.ip_network("198.18.0.0/15"),
+    ipaddress.ip_network("2001:2::/48"),
+)
+_PROXY_DNS_TRUSTED_DOMAINS = ("aliyuncs.com",)
+
+API_TYPES = ("openai", "minimax")
+MINIMAX_MODELS = ("image-01", "image-01-live")
+MINIMAX_DEFAULT_BASE = "https://api.minimax.cn/v1"
+MINIMAX_ASPECT_RATIOS = ("1:1", "16:9", "4:3", "3:2", "2:3", "3:4", "9:16", "21:9")
+RANDOM_IDEA_MAX_CHARS = 60
+
 
 # ---- 安全与原子写辅助 ----
 
-def _is_private_host(host: str) -> bool:
-    """判断宿主名是否指向私有/特殊地址（loopback, link-local, private, 0.0.0.0）"""
+def _is_private_host(host: str, allow_proxy_dns: bool = False) -> bool:
+    """检查 IPv4/IPv6；可信存储域名可兼容代理的 Fake-IP 解析。"""
     if not host:
         return True
     try:
-        # 解析 IPv4
-        for family, _, _, _, sockaddr in socket.getaddrinfo(host, None, socket.AF_INET):
-            ip = ipaddress.IPv4Address(sockaddr[0])
-            if ip.is_loopback or ip.is_link_local or ip.is_private or str(ip) == "0.0.0.0":
-                return True
-    except Exception:
-        # 解析失败视为不安全
-        return True
-    return False
+        literal_ip = ipaddress.ip_address(host)
+    except ValueError:
+        literal_ip = None
+    if literal_ip is not None:
+        ip = getattr(literal_ip, "ipv4_mapped", None) or literal_ip
+        return not ip.is_global or ip.is_multicast
+
+    # 不限定 AF_INET，否则仅有 AAAA 记录的图片域名也会被误拦。
+    try:
+        addresses = socket.getaddrinfo(host, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+    except OSError as exc:
+        raise ValueError(f"图片域名解析失败: {host}，请检查网络或 DNS 后重试") from exc
+    for _, _, _, _, sockaddr in addresses:
+        ip = ipaddress.ip_address(sockaddr[0])
+        ip = getattr(ip, "ipv4_mapped", None) or ip
+        if allow_proxy_dns and any(ip in network for network in _PROXY_DNS_NETWORKS):
+            continue
+        if not ip.is_global or ip.is_multicast:
+            return True
+    return not addresses
 
 
 def _validate_url(url: str) -> None:
-    """校验 URL 是否安全（不仅 scheme，还要 host 不能是私有/本地环回）"""
+    """校验图片 URL；错误信息不包含可能带有签名凭据的完整 URL。"""
     try:
         p = urllib.parse.urlparse(url)
-    except Exception:
-        raise ValueError(f"无效的 URL: {url}")
+        host = (p.hostname or "").lower().rstrip(".")
+        p.port  # 同时校验端口格式与范围
+    except (TypeError, ValueError) as exc:
+        raise ValueError("无效的图片 URL") from exc
     if p.scheme.lower() not in ("http", "https"):
-        raise ValueError(f"仅支持 HTTP/HTTPS 协议: {url}")
-    host = p.hostname or ""
-    # 忽略 file:// URL（由 caller 过滤掉）
-    if not host or _is_private_host(host):
-        raise ValueError(f"目标地址不允许访问: {url}")
+        raise ValueError("图片地址仅支持 HTTP/HTTPS 协议")
+    allow_proxy_dns = p.scheme.lower() == "https" and any(
+        host == domain or host.endswith("." + domain)
+        for domain in _PROXY_DNS_TRUSTED_DOMAINS
+    )
+    if not host or _is_private_host(host, allow_proxy_dns):
+        raise ValueError(f"目标地址不允许访问: {host or '缺少域名'}（图片地址指向本地、内网或特殊网络）")
+
+
+class _ImageRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        # 图片存储可能跳转至 CDN；每一次跳转都要重新校验目标。
+        _validate_url(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
 def _atomic_write(filepath: str, content: bytes) -> None:
@@ -170,7 +207,8 @@ def save_image(item, idx, out_fmt):
         # SSRF 防护：仅 accept http/https，且 host 不能是本地/私有IP
         _validate_url(url)
         req = urllib.request.Request(url, headers={"User-Agent": "image-fantasy"})
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        opener = urllib.request.build_opener(_ImageRedirectHandler())
+        with opener.open(req, timeout=60) as resp:
             data = resp.read()
             ct = resp.headers.get("Content-Type", "")
             ext = "jpeg" if "jpeg" in ct else "webp" if "webp" in ct else "png"
@@ -189,6 +227,11 @@ def upstream_err_text(err, code):
     上游常返回嵌套结构 {"error": {"message": ..., "code": ...}}，直接丢给前端
     会渲染成一坨 JSON。这里只取最内层的 message，取不到再退回整体序列化。
     """
+    if isinstance(err, dict) and isinstance(err.get("base_resp"), dict):
+        status = err["base_resp"]
+        return "MiniMax 错误 %s：%s" % (
+            status.get("status_code", code), status.get("status_msg") or "请求失败"
+        )
     msg = None
     if isinstance(err, dict):
         node = err
@@ -206,6 +249,164 @@ def upstream_err_text(err, code):
     if not msg:
         msg = "HTTP %s" % code
     return msg.strip() or ("HTTP %s" % code)
+
+
+def build_image_request(api_type, base, model, mode, prompt, params, extra, image=None, mask=None):
+    """把界面参数转换为渠道原生请求，返回 (endpoint, payload)。"""
+    if api_type not in API_TYPES:
+        raise ValueError("不支持的渠道接口类型")
+    if not isinstance(extra, dict):
+        raise ValueError("额外参数必须是 JSON 对象")
+    payload = {"model": model, "prompt": prompt}
+    if api_type == "minimax":
+        # 官方协议：https://platform.minimax.cn/docs/api-reference/image-generation-t2i
+        # 默认直接返回 Base64，避免临时图片外链过期或下载被本机代理影响。
+        response_format = params.get("response_format") or "base64"
+        payload["response_format"] = "base64" if response_format == "b64_json" else response_format
+        if params.get("aspect_ratio"):
+            payload["aspect_ratio"] = params["aspect_ratio"]
+        elif params.get("size"):
+            match = re.fullmatch(r"(\d+)x(\d+)", params["size"])
+            if not match:
+                raise ValueError("MiniMax 自定义尺寸应为 宽x高，例如 1024x1024")
+            payload["width"], payload["height"] = map(int, match.groups())
+        if params.get("watermark") is not None:
+            payload["aigc_watermark"] = bool(params["watermark"])
+        if params.get("prompt_extend") is not None:
+            payload["prompt_optimizer"] = bool(params["prompt_extend"])
+        if params.get("minimax_style"):
+            payload["style"] = {
+                "style_type": params["minimax_style"],
+                "style_weight": params.get("minimax_style_weight", 0.8),
+            }
+        if mode == "edit":
+            if mask:
+                raise ValueError("MiniMax 支持人物参考图，不支持 Mask 遮罩编辑")
+            if image:
+                if not isinstance(image, str) or not re.match(r"data:image/(png|jpe?g);base64,", image):
+                    raise ValueError("MiniMax 人物参考图仅支持 PNG / JPEG 的 Base64 Data URL")
+                try:
+                    reference = base64.b64decode(image.split(",", 1)[1], validate=True)
+                except ValueError as exc:
+                    raise ValueError("人物参考图的 Base64 数据无效") from exc
+                if not reference or len(reference) >= 10 * 1024 * 1024:
+                    raise ValueError("MiniMax 人物参考图大小须小于 10 MB")
+                payload["subject_reference"] = [{"type": "character", "image_file": image}]
+        base = base.rstrip("/")
+        endpoint = base if base.endswith("/image_generation") else (
+            base + "/image_generation" if base.endswith("/v1") else base + "/v1/image_generation"
+        )
+    else:
+        for key in ("size", "output_format", "response_format", "quality", "style", "background"):
+            if params.get(key):
+                payload[key] = params[key]
+        if params.get("watermark") is not None:
+            payload["watermark"] = bool(params["watermark"])
+        if params.get("prompt_extend") is not None:
+            payload["prompt_extend"] = bool(params["prompt_extend"])
+        if params.get("output_compression") not in (None, ""):
+            try:
+                payload["output_compression"] = max(0, min(100, int(params["output_compression"])))
+            except (ValueError, TypeError):
+                pass
+        if mode == "edit":
+            if image:
+                payload["image"] = image
+            if mask:
+                payload["mask"] = mask
+        endpoint = base.rstrip("/") + ("/images/edits" if mode == "edit" else "/images/generations")
+    try:
+        payload["n"] = max(1, int(params.get("n", 1) or 1))
+    except (ValueError, TypeError):
+        payload["n"] = 1
+    payload.update({key: value for key, value in extra.items() if key and value not in (None, "")})
+    if api_type == "minimax":
+        _validate_minimax_payload(payload, mode)
+    return endpoint, payload
+
+
+def _validate_minimax_payload(payload, mode):
+    prompt = payload.get("prompt")
+    if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 1500:
+        raise ValueError("MiniMax 提示词须为 1～1500 个字符")
+    if payload.get("response_format") not in ("url", "base64"):
+        raise ValueError("MiniMax 返回方式仅支持 url / base64")
+    count = payload.get("n")
+    if type(count) is not int or not 1 <= count <= 9:
+        raise ValueError("MiniMax 单次生成数量须为 1～9")
+    ratio = payload.get("aspect_ratio")
+    if ratio and ratio not in MINIMAX_ASPECT_RATIOS:
+        raise ValueError("MiniMax 不支持此画幅比例")
+    live = payload.get("model") == "image-01-live"
+    if live and ratio == "21:9":
+        raise ValueError("image-01-live 不支持 21:9 画幅")
+    if "width" in payload or "height" in payload:
+        if live:
+            raise ValueError("image-01-live 请使用预设画幅，不支持自定义宽高")
+        for key in ("width", "height"):
+            value = payload.get(key)
+            if type(value) is not int or not 512 <= value <= 2048 or value % 8:
+                raise ValueError("MiniMax 自定义宽和高须同时设置，范围 512～2048，且为 8 的倍数")
+    if "style" in payload:
+        style = payload["style"]
+        if not live:
+            raise ValueError("MiniMax 画风设置仅适用于 image-01-live")
+        if not isinstance(style, dict) or style.get("style_type") not in ("漫画", "元气", "中世纪", "水彩"):
+            raise ValueError("MiniMax 画风支持：漫画、元气、中世纪、水彩")
+        weight = style.get("style_weight", 0.8)
+        if type(weight) not in (int, float) or not 0 < weight <= 1:
+            raise ValueError("MiniMax 画风权重须大于 0 且不超过 1")
+    if mode == "edit" and not payload.get("subject_reference"):
+        raise ValueError("MiniMax 人物参考模式需要上传参考图")
+
+
+def normalize_image_response(upstream, api_type):
+    """将渠道响应归一为现有图库使用的 data 数组。"""
+    if api_type != "minimax":
+        return upstream
+    if not isinstance(upstream, dict):
+        raise ValueError("MiniMax 返回了无效的响应")
+    status = upstream.get("base_resp") or {}
+    if status.get("status_code") not in (None, 0, "0"):
+        raise ValueError(upstream_err_text(upstream, status.get("status_code")))
+    data = upstream.get("data") or {}
+    if not isinstance(data, dict):
+        raise ValueError("MiniMax 返回了无效的图片数据")
+    items = []
+    for key, output_key in (("image_base64", "b64_json"), ("image_urls", "url")):
+        values = data.get(key) or []
+        if not isinstance(values, list):
+            raise ValueError("MiniMax 返回了无效的图片列表")
+        for value in values:
+            if isinstance(value, str) and value.strip():
+                if output_key == "b64_json" and value.startswith("data:image/"):
+                    value = value.split(",", 1)[-1]
+                items.append({output_key: value})
+        if items:
+            break  # 优先 Base64，避免同时返回两种格式时重复入库。
+    if not items:
+        failed = (upstream.get("metadata") or {}).get("failed_count")
+        if failed and str(failed) != "0":
+            raise ValueError("MiniMax 未返回图片：内容安全检查未通过，请调整提示词后重试")
+        raise ValueError("MiniMax 未返回有效图片，请稍后重试")
+    return {**upstream, "data": items}
+
+
+def concise_random_idea(content, truncated=False):
+    """随机灵感只保留一个主轴；超长响应在完整句或分句处收束。"""
+    sentence = re.split(r"(?<=[。！？!?])", " ".join(content.split()), maxsplit=1)[0].strip()
+    if len(sentence) <= RANDOM_IDEA_MAX_CHARS and (
+        not truncated or sentence.endswith(("。", "！", "？", "!", "?"))
+    ):
+        return sentence
+    # 不追加第二次模型调用；也不在词语中间硬截断。
+    boundaries = list(re.finditer(r"[，,；;：:]", sentence[:RANDOM_IDEA_MAX_CHARS]))
+    if boundaries:
+        idea = sentence[:boundaries[-1].start()].strip()
+        if idea:
+            return idea + "。"
+    reason = "模型输出达到上限" if truncated else "模型返回的灵感过长"
+    raise ValueError(reason + "，未能提取完整构思，请重新随机一次")
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -262,6 +463,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         p = parsed.path
         if p in ("/", "/index.html"):
             self._send_file(os.path.join(STATIC_DIR, "index.html"), "text/html; charset=utf-8")
+        elif p == "/favicon.ico":
+            self._send_file(os.path.join(STATIC_DIR, "favicon.ico"), "image/vnd.microsoft.icon")
         elif p.startswith("/static/"):
             fpath = os.path.normpath(os.path.join(STATIC_DIR, p[len("/static/"):]))
             if not fpath.startswith(STATIC_DIR):
@@ -269,6 +472,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             ctype = "text/html; charset=utf-8"
             if fpath.endswith(".js"): ctype = "text/javascript; charset=utf-8"
             elif fpath.endswith(".css"): ctype = "text/css; charset=utf-8"
+            elif fpath.endswith(".svg"): ctype = "image/svg+xml"
+            elif fpath.endswith(".ico"): ctype = "image/vnd.microsoft.icon"
             self._send_file(fpath, ctype)
         elif p.startswith("/images/"):
             fname = os.path.basename(p)
@@ -368,6 +573,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._send(400, {"error": "供应商不存在或已被删除，请回首页重新选择。"}); return
         base = (prov.get("base") or "").strip().rstrip("/")
         key = (prov.get("key") or "").strip()
+        api_type = prov.get("api_type") or "openai"
         if not base:
             self._send(400, {"error": "该供应商缺少 Base URL，请到供应商管理里补上。"}); return
         if not model:
@@ -376,43 +582,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if not model:
             self._send(400, {"error": "该供应商还没有模型，请先添加。"}); return
 
-        # 构造上游请求体
-        payload = {"model": model, "prompt": prompt}
-        if params.get("size"): payload["size"] = params["size"]
-        if params.get("output_format"): payload["output_format"] = params["output_format"]
-        if params.get("response_format"): payload["response_format"] = params["response_format"]
-        # watermark 显式传布尔：False = 去水印（是否生效取决于上游渠道）
-        if params.get("watermark") is not None:
-            payload["watermark"] = bool(params["watermark"])
-        # prompt_extend：提示词润色开关（部分渠道支持，如参考文档默认 true）
-        if params.get("prompt_extend") is not None:
-            payload["prompt_extend"] = bool(params["prompt_extend"])
-        # GPT-Image 兼容参数（其他模型可忽略）
-        for k in ("quality", "style", "background"):
-            if params.get(k): payload[k] = params[k]
-        # 压缩率（仅 jpeg/webp 有效）
-        if params.get("output_compression") not in (None, ""):
-            try:
-                payload["output_compression"] = max(0, min(100, int(params["output_compression"])))
-            except Exception:
-                pass
-        # n：默认 1；部分渠道仅支持 1
         try:
-            payload["n"] = max(1, int(params.get("n", 1) or 1))
-        except Exception:
-            payload["n"] = 1
-        # 任意额外参数透传
-        if isinstance(extra, dict):
-            for k, v in extra.items():
-                if k and v not in (None, ""):
-                    payload[k] = v
-        if mode == "edit":
-            if data.get("image"):
-                payload["image"] = data["image"]
-            if data.get("mask"):
-                payload["mask"] = data["mask"]
-
-        endpoint = base + ("/images/edits" if mode == "edit" else "/images/generations")
+            if api_type == "minimax" and not key:
+                raise ValueError("MiniMax 渠道需要填写 API Key，请到渠道设置中补充")
+            endpoint, payload = build_image_request(
+                api_type, base, model, mode, prompt, params, extra, data.get("image"), data.get("mask")
+            )
+        except ValueError as exc:
+            self._send(400, {"error": str(exc)}); return
         body = json.dumps(payload).encode("utf-8")
         hdrs = {"Content-Type": "application/json"}
         if key:
@@ -440,9 +617,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     self._emit({"stage": "error", "message": str(e)})
                     return
 
+                upstream = normalize_image_response(upstream, api_type)
                 items = upstream.get("data") or []
                 self._emit({"stage": "saving", "count": len(items)})
-                out_fmt = params.get("output_format")
+                # MiniMax 不接受 output_format；按返回的真实图片内容确定后缀。
+                out_fmt = None if api_type == "minimax" else params.get("output_format")
+                size = params.get("size", "")
+                if api_type == "minimax":
+                    size = payload.get("aspect_ratio") or (
+                        "%sx%s" % (payload["width"], payload["height"]) if "width" in payload else "1:1"
+                    )
                 saved = []
                 # 在锁内完成 读 -> 改 -> 写，避免并发修正
                 with _lock:
@@ -460,7 +644,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         entry = {
                             "id": gid, "filename": filename, "url": local_url,
                             "prompt": prompt, "model": model,
-                            "size": params.get("size", ""), "output_format": out_fmt or "",
+                            "size": size,
+                            "output_format": filename.rsplit(".", 1)[-1] if api_type == "minimax" else out_fmt or "",
+                            "api_type": api_type,
                             "mode": mode, "created": int(time.time() * 1000),
                         }
                         gallery.append(entry)
@@ -505,6 +691,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         name = (body.get("name") or "").strip()
         base = (body.get("base") or "").strip().rstrip("/")
         key = (body.get("key") or "").strip()
+        api_type = body.get("api_type") or "openai"
+        if api_type not in API_TYPES:
+            raise ValueError("接口类型仅支持 OpenAI 兼容或 MiniMax 原生")
+        if api_type == "minimax" and not base:
+            base = MINIMAX_DEFAULT_BASE
         raw = body.get("models") or []
         if not isinstance(raw, list):
             raw = []
@@ -513,13 +704,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
             m = str(m).strip()
             if m and m not in seen:
                 seen.add(m); models.append(m)
-        return name, base, key, models
+        return name, base, key, models, api_type
 
     def _create_provider(self):
         body = self._read_json_body()
         if body is None:
             self._send(400, {"error": "请求解析失败"}); return
-        name, base, key, models = self._provider_fields(body)
+        try:
+            name, base, key, models, api_type = self._provider_fields(body)
+        except ValueError as exc:
+            self._send(400, {"error": str(exc)}); return
         if not name or not base:
             self._send(400, {"error": "名称和 Base URL 必填"}); return
         # 在锁内完成 读 -> 改 -> 写，避免并发修正
@@ -531,6 +725,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             prov = {
                 "id": "p_" + uuid.uuid4().hex[:8],
                 "name": name, "base": base, "key": key,
+                "api_type": api_type,
                 "models": models, "created": int(time.time() * 1000),
             }
             items.append(prov)
@@ -542,7 +737,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         body = self._read_json_body()
         if body is None:
             self._send(400, {"error": "请求解析失败"}); return
-        name, base, key, models = self._provider_fields(body)
+        try:
+            name, base, key, models, api_type = self._provider_fields(body)
+        except ValueError as exc:
+            self._send(400, {"error": str(exc)}); return
         # 在锁内完成 读 -> 改 -> 写，避免并发修正
         with _lock:
             try:
@@ -556,6 +754,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     if base: it["base"] = base
                     it["key"] = key
                     it["models"] = models
+                    if "api_type" in body:
+                        it["api_type"] = api_type
                     found = it
                     break
             if found is None:
@@ -582,6 +782,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
         body = self._read_json_body()
         if body is None:
             self._send(400, {"error": "请求解析失败"}); return
+        api_type = body.get("api_type") or "openai"
+        if api_type not in API_TYPES:
+            self._send(400, {"error": "不支持的渠道接口类型"}); return
+        if api_type == "minimax":
+            # 官方图片接口未提供模型枚举端点，明确返回文档中的预设列表。
+            self._send(200, {"models": list(MINIMAX_MODELS), "source": "preset"}); return
         base = (body.get("base") or "").strip().rstrip("/")
         key = (body.get("key") or "").strip()
         if not base:
@@ -620,6 +826,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
         provider_id = (body.get("provider_id") or "").strip()
         model = (body.get("model") or "").strip()
         user_prompt = (body.get("prompt") or "").strip()
+        # 新界面明确区分随机与扩写；未传 action 的旧客户端维持原有行为。
+        action = body.get("action") or ("expand" if user_prompt else "random")
+        if action not in ("random", "expand"):
+            self._send(400, {"error": "提示词操作仅支持随机灵感或 AI 扩写"}); return
+        if action == "expand" and not user_prompt:
+            self._send(400, {"error": "请先输入提示词或随机生成灵感，再进行扩写"}); return
 
         if not model:
             self._send(400, {"error": "未指定文本大模型"}); return
@@ -633,6 +845,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             prov = load_providers()[0]
         if prov is None:
             self._send(400, {"error": "未找到可用的供应商渠道"}); return
+        if prov.get("api_type") == "minimax":
+            self._send(400, {"error": "此渠道用于 MiniMax 图片生成，请为灵感功能选择 OpenAI 兼容的文本模型渠道"}); return
 
         base = (prov.get("base") or "").strip().rstrip("/")
         key = (prov.get("key") or "").strip()
@@ -641,29 +855,38 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
         endpoint = base + "/chat/completions"
 
-        few_shots = [
-            "复古咖啡馆门头特写：一块木质招牌上\"深夜食堂\"四个手写体汉字清晰呈现，招牌周围环绕暖黄小灯泡，背景虚化，夜晚氛围，电影级调色",
-            "未来主义赛博朋克雨夜街道，霓虹招牌在湿漉漉的柏油路面上反射绚烂倒影，悬浮飞车穿梭于摩天楼宇之间，8K 超高清电影质感",
-            "新中式水墨风仙山楼阁，孤舟蓑笠翁独钓寒江雪，云雾缭绕其间，传统青绿山水色调，极简留白，大师意境",
-            "微距摄影：清晨草叶上一滴晶莹剔透的水珠，水珠中倒映着初升的微曦朝霞与微小的野花，柔和顶光，景深极浅",
-            "宫崎骏动画风格的夏日乡野车站，阳光透过香樟树叶洒下斑驳光影，远处是蔚蓝的积雨云和金黄的向日葵花海"
-        ]
-
-        system_msg = (
-            "你是一位世界顶尖的 AI 图像生成艺术家和 Prompt 提示词工程师。\n"
-            "你的任务是为文生图模型（如 FLUX, Midjourney, DALL-E, SDXL）构思或扩写一段极具视觉冲击力和画面细节的生图提示词。\n"
-            "要求：\n"
-            "1. 具备生动的视觉细节，涵盖：主体、场景环境、构图视角、光影氛围、材质色彩、镜头景深、艺术风格等；\n"
-            "2. 输出纯中文画面描述（若画面中有招牌文字可保留双引号标注）；\n"
-            "3. 语言凝练精美，画面富有想象力，拒绝俗套；\n"
-            "4. 重要规则：绝对不要输出任何前缀、解释、说明、标号、问候语或引号，仅直接输出最终的提示词正文本身。\n"
-            "高质量提示词样例参考：\n- " + "\n- ".join(few_shots)
-        )
-
-        if user_prompt:
-            user_msg = f"请以用户提供的构思为核心灵感进行艺术扩写与细节丰富，创作一段大师级生图提示词：\n用户构思：{user_prompt}"
+        if action == "expand":
+            few_shots = [
+                "复古咖啡馆门头特写：一块木质招牌上\"深夜食堂\"四个手写体汉字清晰呈现，招牌周围环绕暖黄小灯泡，背景虚化，夜晚氛围，电影级调色",
+                "未来主义赛博朋克雨夜街道，霓虹招牌在湿漉漉的柏油路面上反射绚烂倒影，悬浮飞车穿梭于摩天楼宇之间，8K 超高清电影质感",
+                "新中式水墨风仙山楼阁，孤舟蓑笠翁独钓寒江雪，云雾缭绕其间，传统青绿山水色调，极简留白，大师意境",
+                "微距摄影：清晨草叶上一滴晶莹剔透的水珠，水珠中倒映着初升的微曦朝霞与微小的野花，柔和顶光，景深极浅",
+                "宫崎骏动画风格的夏日乡野车站，阳光透过香樟树叶洒下斑驳光影，远处是蔚蓝的积雨云和金黄的向日葵花海"
+            ]
+            system_msg = (
+                "你是一位 AI 图像生成艺术家和 Prompt 提示词工程师。\n"
+                "你的任务是保留用户的画面主轴，将简短灵感扩写为完整的生图提示词。\n"
+                "要求：\n"
+                "1. 细化主体、场景环境、构图视角、光影氛围、材质色彩、镜头景深和艺术风格；\n"
+                "2. 保留用户指定的主体、场景和风格，不替换成其他题材；\n"
+                "3. 输出凝练的中文画面描述，不输出前缀、解释、标号或问候语；\n"
+                "细节描述方式参考（不要照搬示例的题材）：\n- " + "\n- ".join(few_shots)
+            )
+            user_msg = f"请保留用户构思的主体、场景与风格，在此基础上补充构图、光影和画面细节，扩写为一段生图提示词：\n用户构思：{user_prompt}"
+            max_tokens = 400
         else:
-            user_msg = "请完全自由发散你的想象力，随机创造一段惊艳动人、风格独特的生图提示词。"
+            system_msg = (
+                "你负责提供绘画灵感，帮用户快速确定要画什么。\n"
+                "只给一个画面主轴：一个主体、一个核心场景或动作，可以加一个有趣的创意点。\n"
+                "用20～40个中文字符写成一句话，最多60个字符（含标点）。先写清主体和场景。\n"
+                "不展开光影、构图、镜头、材质或色彩细节，不堆砌画质词；细节由用户之后手动扩写。\n"
+                "只输出构思本身，不要标题、解释、列表或多个方案。题材自由变化。\n"
+                "简短程度参考（请创造新的题材）：\n"
+                "雨后的街角花店，一只橘猫趴在待售的花束之间。\n"
+                "云海上的小村庄，居民乘着巨大的风筝出门。"
+            )
+            user_msg = "随机想一个新的画面主轴，用20～40字的一句话给我灵感。"
+            max_tokens = 128
 
         payload = {
             "model": model,
@@ -672,7 +895,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 {"role": "user", "content": user_msg}
             ],
             "temperature": 0.95,
-            "max_tokens": 400
+            "max_tokens": max_tokens
         }
 
         hdrs = {"Content-Type": "application/json"}
@@ -695,6 +918,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             content = choices[0].get("message", {}).get("content", "").strip()
             content = re.sub(r'^(["\'“”]|提示词[:：])\s*', '', content)
             content = re.sub(r'["\'“”]\s*$', '', content).strip()
+            if not content:
+                self._send(502, {"error": "模型未返回有效提示词"}); return
+            if action == "random":
+                content = concise_random_idea(content, choices[0].get("finish_reason") == "length")
             self._send(200, {"ok": True, "prompt": content})
         except urllib.error.HTTPError as e:
             try:

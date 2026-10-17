@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Image Fantasy · AI 图像创作工坊</title>
+<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml" sizes="any">
 <style>
   /* ================= 现代设计系统 & 主题变量 ================= */
   :root {
@@ -432,6 +434,20 @@
     display: flex;
     gap: 6px;
     flex-wrap: wrap;
+  }
+  .prompt-assist-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .prompt-assist-actions .mini-btn {
+    flex: 1;
+    justify-content: center;
+    padding: 7px 10px;
+  }
+  .prompt-assist-actions .mini-btn:disabled {
+    opacity: 0.6;
+    cursor: wait;
   }
   .mini-btn {
     display: inline-flex;
@@ -1562,6 +1578,7 @@
           <select id="selModel" class="select-styled"></select>
         </div>
       </div>
+      <p id="channelHint" class="hide" style="font-size:12px; color:var(--text-muted); margin-top:10px;"></p>
     </div>
 
     <!-- 提示词输入卡片 -->
@@ -1576,12 +1593,18 @@
       <div class="prompt-box">
         <textarea id="prompt" class="textarea-styled" placeholder="描述你构想的视觉画面，支持中英文..."></textarea>
         
+        <div class="prompt-assist-actions">
+          <button class="mini-btn dice" id="inspireBtn" title="用一句话确定主体和场景，细节可再用 AI 扩写补充">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect><circle cx="8" cy="8" r="1.5"></circle><circle cx="16" cy="16" r="1.5"></circle><circle cx="8" cy="16" r="1.5"></circle><circle cx="16" cy="8" r="1.5"></circle><circle cx="12" cy="12" r="1.5"></circle></svg>
+            随机灵感
+          </button>
+          <button class="mini-btn dice" id="expandBtn" title="基于当前提示词，补充构图、光影与画面细节">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3Z"></path></svg>
+            AI 扩写
+          </button>
+        </div>
         <div class="prompt-toolbar">
           <div class="quick-tools">
-            <button class="mini-btn dice" id="inspireBtn" title="随机填入一个精美提示词灵感">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect><circle cx="8" cy="8" r="1.5"></circle><circle cx="16" cy="16" r="1.5"></circle><circle cx="8" cy="16" r="1.5"></circle><circle cx="16" cy="8" r="1.5"></circle><circle cx="12" cy="12" r="1.5"></circle></svg>
-              随机灵感
-            </button>
             <button class="mini-btn" id="clearPromptBtn">清空</button>
             <button class="mini-btn" id="copyPromptBtn">复制</button>
           </div>
@@ -1612,7 +1635,7 @@
             <div id="imgThumb" class="dropzone-preview hide"></div>
           </div>
         </div>
-        <div class="form-group">
+        <div class="form-group" id="maskGroup">
           <label class="form-label">遮罩 Mask（可选，透明部分将被重绘）</label>
           <div class="dropzone" id="maskDrop">
             <input id="maskFile" type="file" accept="image/*">
@@ -1641,27 +1664,27 @@
           <span class="ratio-name">自动</span>
           <span class="ratio-desc">推荐</span>
         </div>
-        <div class="ratio-card" data-v="2048x2048">
+        <div class="ratio-card" data-v="2048x2048" data-ratio="1:1">
           <div class="ratio-visual r-1-1"></div>
           <span class="ratio-name">1:1 方形</span>
           <span class="ratio-desc">2048²</span>
         </div>
-        <div class="ratio-card" data-v="2720x1536">
+        <div class="ratio-card" data-v="2720x1536" data-ratio="16:9">
           <div class="ratio-visual r-16-9"></div>
           <span class="ratio-name">16:9 宽屏</span>
           <span class="ratio-desc">横版壁纸</span>
         </div>
-        <div class="ratio-card" data-v="1536x2720">
+        <div class="ratio-card" data-v="1536x2720" data-ratio="9:16">
           <div class="ratio-visual r-9-16"></div>
           <span class="ratio-name">9:16 竖屏</span>
           <span class="ratio-desc">手机壁纸</span>
         </div>
-        <div class="ratio-card" data-v="2496x1664">
+        <div class="ratio-card" data-v="2496x1664" data-ratio="3:2">
           <div class="ratio-visual r-3-2"></div>
           <span class="ratio-name">3:2 经典</span>
           <span class="ratio-desc">微单画幅</span>
         </div>
-        <div class="ratio-card" data-v="1664x2496">
+        <div class="ratio-card" data-v="1664x2496" data-ratio="2:3">
           <div class="ratio-visual r-2-3"></div>
           <span class="ratio-name">2:3 人像</span>
           <span class="ratio-desc">海报写真</span>
@@ -1670,6 +1693,21 @@
           <div class="ratio-visual r-4k"></div>
           <span class="ratio-name">4K 超清</span>
           <span class="ratio-desc">4096²</span>
+        </div>
+        <div class="ratio-card hide" data-v="4:3" data-ratio="4:3" data-minimax="true">
+          <div class="ratio-visual r-3-2"></div>
+          <span class="ratio-name">4:3 横幅</span>
+          <span class="ratio-desc">1152×864</span>
+        </div>
+        <div class="ratio-card hide" data-v="3:4" data-ratio="3:4" data-minimax="true">
+          <div class="ratio-visual r-2-3"></div>
+          <span class="ratio-name">3:4 竖幅</span>
+          <span class="ratio-desc">864×1152</span>
+        </div>
+        <div class="ratio-card hide" data-v="21:9" data-ratio="21:9" data-minimax="true">
+          <div class="ratio-visual r-16-9"></div>
+          <span class="ratio-name">21:9 超宽</span>
+          <span class="ratio-desc">1344×576</span>
         </div>
         <div class="ratio-card" data-v="custom">
           <div class="ratio-visual r-custom"></div>
@@ -1681,6 +1719,7 @@
       <div id="sizeCustomWrap" class="hide" style="margin-top: 10px;">
         <input id="p_size" class="input-styled" value="2048x2048" placeholder="宽x高：32 的倍数，如 2048x1152">
       </div>
+      <p id="sizeHint" class="hide" style="font-size:12px; color:var(--text-muted); margin-top:10px;"></p>
     </div>
 
     <!-- 生成偏好选项 -->
@@ -1724,6 +1763,22 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
         </summary>
         <div class="advanced-content">
+          <div id="minimaxStyleGroup" class="form-row-2 hide">
+            <div class="form-group">
+              <label class="form-label">MiniMax 画风</label>
+              <select id="p_minimax_style" class="select-styled">
+                <option value="">默认画风</option>
+                <option value="漫画">漫画</option>
+                <option value="元气">元气</option>
+                <option value="中世纪">中世纪</option>
+                <option value="水彩">水彩</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">画风权重</label>
+              <input id="p_minimax_style_weight" type="number" min="0.01" max="1" step="0.05" value="0.8" class="input-styled">
+            </div>
+          </div>
           <!-- 第1行: 图片格式 & 返回方式 -->
           <div class="form-row-2">
             <div class="form-group">
@@ -1939,7 +1994,7 @@
   <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
     <div>
       <h2 style="font-size:20px; font-weight:700;">模型与供应商配置</h2>
-      <p style="font-size:13px; color:var(--text-muted); margin-top:2px;">管理所有 OpenAI 兼容格式的图像生成接口渠道，数据安全持久化在本地服务端。</p>
+      <p style="font-size:13px; color:var(--text-muted); margin-top:2px;">管理 OpenAI 兼容与 MiniMax 原生图像渠道，配置保存在本地服务端。</p>
     </div>
     <button class="btn btn-outline" onclick="showView('gen')">返回创作工坊</button>
   </div>
@@ -1953,13 +2008,22 @@
       <span style="font-size:12px; color:var(--text-dim);" id="pv_state"></span>
     </div>
 
+    <div class="form-group" style="margin-bottom:14px;">
+      <label class="form-label">接口类型</label>
+      <select id="pv_type" class="select-styled">
+        <option value="openai">OpenAI 兼容</option>
+        <option value="minimax">MiniMax 原生</option>
+      </select>
+      <p id="pv_type_hint" style="font-size:12px; color:var(--text-muted); margin-top:6px;">适用于 OpenAI 兼容的图片接口与代理渠道。</p>
+    </div>
+
     <div class="form-row-3">
       <div class="form-group">
         <label class="form-label">供应商渠道别名</label>
         <input id="pv_name" class="input-styled" placeholder="如 TokenRhythm / Vtry">
       </div>
       <div class="form-group">
-        <label class="form-label">Base URL (以 /v1 结尾)</label>
+        <label class="form-label" id="pv_base_label">Base URL (以 /v1 结尾)</label>
         <input id="pv_base" class="input-styled" placeholder="https://api.example.com/v1">
       </div>
       <div class="form-group">
@@ -1997,7 +2061,7 @@
       <button class="btn btn-primary" id="pv_save">保存供应商渠道</button>
       <button class="btn btn-outline" id="pv_fetch">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-        从接口自动拉取模型列表
+        <span id="pv_fetch_text">从接口自动拉取模型列表</span>
       </button>
       <button class="btn btn-outline hide" id="pv_cancel">取消编辑</button>
     </div>
@@ -2030,7 +2094,8 @@
       </div>
     </div>
     <div style="font-size:12px; color:var(--text-dim); margin-top:10px; line-height:1.6;">
-      💡 <b>工作机制：</b>留空时，点击「随机灵感」将从本地预设的高质量精品词库中随机抽取；填写后，将由该大模型实时头脑风暴构思生图描述，若输入框中已有简单词语，将自动进行艺术细节智能扩写。
+      💡 <b>随机灵感：</b>用约 20～40 字的一句话确定主体和场景；未配置模型时使用本地简短灵感。<br>
+      <b>AI 扩写：</b>配置文本模型后，手动点击即可基于当前提示词补充细节。可以先随机、再修改，最后按需扩写。
     </div>
     <div style="margin-top:14px; display:flex; justify-content:flex-end; gap:8px;">
       <button class="btn btn-outline btn-sm" id="btn_clear_inspire_cfg">清除配置 (还原预置)</button>
@@ -2120,19 +2185,65 @@ let editingId = null;
 let wantSel = { provider: '', model: '' };
 let fetchedModels = [];
 let inspireCfg = { provider: '', model: '' };
+let inspireRunning = false;
 
-const SIZE_PRESETS = ['auto', '2048x2048', '2720x1536', '1536x2720', '2496x1664', '1664x2496', '4096x4096'];
+const SIZE_PRESETS = ['auto', '2048x2048', '2720x1536', '1536x2720', '2496x1664', '1664x2496', '4096x4096', '4:3', '3:4', '21:9'];
+const MINIMAX_DEFAULT_BASE = 'https://api.minimax.cn/v1';
+const MINIMAX_MODELS = ['image-01', 'image-01-live'];
+const MINIMAX_SIZES = {
+  '1:1': '1024×1024', '16:9': '1280×720', '4:3': '1152×864', '3:2': '1248×832',
+  '2:3': '832×1248', '3:4': '864×1152', '9:16': '720×1280', '21:9': '1344×576'
+};
 
-// 灵感灵感库 Prompt Inspirations
+function isMiniMax(){
+  return providers.some(p => p.id === $('selProvider').value && p.api_type === 'minimax');
+}
+
+function updateChannelUI(){
+  const mini = isMiniMax(), live = mini && $('selModel').value === 'image-01-live';
+  $('channelHint').classList.toggle('hide', !mini);
+  $('channelHint').textContent = 'MiniMax 原生 · 支持文生图及单人人物参考；参考图须为 PNG / JPEG，且小于 10 MB。';
+  $('maskGroup').classList.toggle('hide', mini);
+  $('imgFile').accept = mini ? 'image/png,image/jpeg' : 'image/*';
+  ['p_format', 'p_quality', 'p_style', 'p_background', 'p_comp'].forEach(id => {
+    $(id).disabled = mini;
+    $(id).closest('.form-group').classList.toggle('hide', mini);
+  });
+  document.querySelectorAll('.advanced-content > .form-row-2').forEach(row => {
+    if(row.id !== 'minimaxStyleGroup'){
+      row.classList.toggle('hide', [...row.children].every(group => group.classList.contains('hide')));
+    }
+  });
+  $('minimaxStyleGroup').classList.toggle('hide', !live);
+  $('sizeHint').classList.toggle('hide', !mini);
+  $('sizeHint').textContent = live
+    ? 'image-01-live 使用预设画幅；自动为 1024×1024。'
+    : 'MiniMax 预设画幅按所示尺寸生成；自定义宽高为 512～2048，且须为 8 的倍数。';
+  $('p_size').placeholder = mini ? '宽x高：8 的倍数，如 1024x1024' : '宽x高：32 的倍数，如 2048x1152';
+  document.querySelectorAll('#ratioGrid .ratio-card').forEach(card => {
+    const desc = card.querySelector('.ratio-desc');
+    if(!card.dataset.originalDesc) card.dataset.originalDesc = desc.textContent;
+    desc.textContent = mini && card.dataset.ratio ? MINIMAX_SIZES[card.dataset.ratio] : card.dataset.originalDesc;
+    const unavailable = (card.dataset.minimax && !mini)
+      || (mini && card.dataset.v === '4096x4096')
+      || (live && ['custom', '21:9'].includes(card.dataset.v));
+    card.classList.toggle('hide', !!unavailable);
+    if(unavailable && card.classList.contains('active')) selectRatio('auto');
+  });
+  updatePromptStats();
+  updateExecBadge();
+}
+
+// 简短的画面主轴；具体视觉细节由 AI 扩写补充。
 const INSPIRATIONS = [
-  "复古咖啡馆门头特写：一块木质招牌上\"深夜食堂\"四个手写体汉字清晰呈现，招牌周围环绕暖黄小灯泡，背景虚化，夜晚氛围，电影级调色",
-  "未来主义赛博朋克雨夜街道，霓虹招牌在湿漉漉的柏油路面上反射绚烂倒影，悬浮飞车穿梭于摩天楼宇之间，8K 超高清电影质感",
-  "新中式水墨风仙山楼阁，孤舟蓑笠翁独钓寒江雪，云雾缭绕其间，传统青绿山水色调，极简留白，大师意境",
-  "微距摄影：清晨草叶上一滴晶莹剔透的水珠，水珠中倒映着初升的微曦朝霞与微小的野花，柔和顶光，景深极浅",
-  "宫崎骏动画风格的夏日乡野车站，阳光透过香樟树叶洒下斑驳光影，远处是蔚蓝的积雨云和金黄的向日葵花海",
-  "写实肖像摄影：身着传统刺绣汉服的东方少女，发髻点缀精巧点翠发簪，眼神清澈温润，柔和自然侧光，面部细节丰富",
-  "太空歌剧概念艺术：巨大的环形星际空间站环绕着一颗蔚蓝与紫色交织的气态巨行星，星际舰队在星云微光中启航，史诗震撼",
-  "3D 萌系黏土风格：一只戴着飞行员护目镜的毛茸茸小水獭驾驶着微型螺旋桨木质小飞机在棉花糖云朵中穿梭，温馨童趣"
+  "一家只在午夜营业的街角咖啡馆，今晚来了一位意外的客人。",
+  "未来城市的屋顶集市上，一位送货员正寻找失踪的机器人。",
+  "群山之间，一叶小舟驶向漂浮在云海上的古老村落。",
+  "一只蜗牛把清晨的露珠当作湖泊，停在草叶边探望。",
+  "夏日乡野车站，一个孩子等待开往向日葵花海的列车。",
+  "一位穿传统服饰的年轻女子，走进废弃多年的家族庭院。",
+  "巨行星旁的太空灯塔，收到一艘失踪飞船发来的信号。",
+  "一只小水獭驾驶纸飞机，第一次飞过屋顶上的空中花园。"
 ];
 
 /* ================= Toast 通知系统 ================= */
@@ -2244,13 +2355,25 @@ setupPills('wmChips', v => { wmVal = (v === 'on'); });
 setupPills('peChips', v => { peVal = v; });
 
 /* ================= 提示词快捷工具 ================= */
-async function triggerInspiration(){
-  const btn = $('inspireBtn');
-  const inputPrompt = $('prompt').value.trim();
-  
-  // 未配置大模型时：直接走本地预设静态精选词库
+async function triggerInspiration(action){
+  if(inspireRunning) return;
+  const expanding = action === 'expand';
+  const originalPrompt = $('prompt').value;
+  const inputPrompt = originalPrompt.trim();
+  if(expanding && !inputPrompt){
+    $('prompt').focus();
+    showToast('请先输入提示词，或点击「随机灵感」，再进行 AI 扩写', 'info');
+    return;
+  }
+  if(expanding && !inspireCfg.model){
+    showToast('请先在「渠道设置」中配置 AI 灵感文本模型，再使用扩写', 'info');
+    return;
+  }
+
+  // 随机操作始终生成新的构思，不根据输入框是否为空切换为扩写。
   if(!inspireCfg.model){
-    const p = INSPIRATIONS[Math.floor(Math.random() * INSPIRATIONS.length)];
+    const choices = INSPIRATIONS.filter(p => p !== inputPrompt);
+    const p = choices[Math.floor(Math.random() * choices.length)];
     $('prompt').value = p;
     updatePromptStats();
     saveCfg();
@@ -2258,11 +2381,12 @@ async function triggerInspiration(){
     return;
   }
 
-  // 配置了大模型时：请求 /api/inspire 由 LLM 实时头脑风暴或扩写
+  const btn = $(expanding ? 'expandBtn' : 'inspireBtn');
   const origHtml = btn.innerHTML;
-  btn.disabled = true;
-  btn.style.opacity = '0.7';
-  btn.innerHTML = `<span style="display:inline-block; animation:spin 1s linear infinite;">⏳</span> <span>AI ${inputPrompt ? '扩写中…' : '构思中…'}</span>`;
+  inspireRunning = true;
+  $('inspireBtn').disabled = true;
+  $('expandBtn').disabled = true;
+  btn.innerHTML = `<span style="display:inline-block; animation:spin 1s linear infinite;">⏳</span> <span>${expanding ? '扩写中…' : '构思中…'}</span>`;
 
   try {
     const r = await fetch('/api/inspire', {
@@ -2271,32 +2395,34 @@ async function triggerInspiration(){
       body: JSON.stringify({
         provider_id: inspireCfg.provider || $('selProvider').value,
         model: inspireCfg.model,
-        prompt: inputPrompt
+        action,
+        prompt: expanding ? inputPrompt : ''
       })
     });
     const d = await r.json().catch(() => ({}));
-    if(r.ok && d.ok && d.prompt){
+    if(r.ok && d.ok && typeof d.prompt === 'string' && d.prompt.trim()){
+      if($('prompt').value !== originalPrompt){
+        showToast('提示词已被修改，本次 AI 结果未覆盖你的输入', 'info');
+        return;
+      }
       $('prompt').value = d.prompt;
       updatePromptStats();
       saveCfg();
-      showToast(inputPrompt ? '已完成 AI 艺术细节扩写 ✨' : 'AI 创意灵感已生成 ✨', 'success');
+      showToast(expanding ? '已扩写当前提示词 ✨' : '新灵感已生成，可继续修改或点击「AI 扩写」', 'success');
     } else {
-      throw new Error((d && d.error) || ('HTTP ' + r.status));
+      throw new Error((d && d.error) || (r.ok ? '模型未返回有效提示词' : 'HTTP ' + r.status));
     }
   } catch(err){
-    // 接口异常或未通时，优雅回退到本地预置词库，体验不中断
-    const fallbackP = INSPIRATIONS[Math.floor(Math.random() * INSPIRATIONS.length)];
-    $('prompt').value = fallbackP;
-    updatePromptStats();
-    saveCfg();
-    showToast('LLM 暂未响应（' + err.message + '），已为你匹配本地精选灵感', 'warning');
+    showToast(`${expanding ? 'AI 扩写' : '随机灵感'}失败：${friendlyErrMsg(err.message)}。当前提示词已保留。`, 'warning');
   } finally {
-    btn.disabled = false;
-    btn.style.opacity = '1';
+    inspireRunning = false;
+    $('inspireBtn').disabled = false;
+    $('expandBtn').disabled = false;
     btn.innerHTML = origHtml;
   }
 }
-$('inspireBtn').onclick = triggerInspiration;
+$('inspireBtn').onclick = () => triggerInspiration('random');
+$('expandBtn').onclick = () => triggerInspiration('expand');
 $('clearPromptBtn').onclick = () => {
   $('prompt').value = '';
   updatePromptStats();
@@ -2320,7 +2446,8 @@ $('prompt').addEventListener('input', () => {
   saveCfg();
 });
 function updatePromptStats(){
-  $('promptLen').textContent = `${$('prompt').value.length} 字符`;
+  const length = [...$('prompt').value].length;
+  $('promptLen').textContent = isMiniMax() ? `${length} / 1500 字符` : `${length} 字符`;
 }
 
 /* ================= 参考图上传交互（点击 + 拖拽） ================= */
@@ -2438,7 +2565,9 @@ function saveCfg(){
     quality: $('p_quality').value,
     style: $('p_style').value,
     background: $('p_background').value,
-    comp: $('p_comp').value
+    comp: $('p_comp').value,
+    minimax_style: $('p_minimax_style').value,
+    minimax_style_weight: $('p_minimax_style_weight').value
   };
   try{ localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); }catch(_){}
 }
@@ -2449,7 +2578,7 @@ function loadCfg(){
   wantSel.model = cfg.selModel || '';
   if(cfg.prompt) $('prompt').value = cfg.prompt;
   updatePromptStats();
-  ['format', 'resp', 'quality', 'style', 'background', 'comp'].forEach(k => {
+  ['format', 'resp', 'quality', 'style', 'background', 'comp', 'minimax_style', 'minimax_style_weight'].forEach(k => {
     const el = $('p_' + k);
     if(!el) return;
     if(cfg[k] !== undefined) el.value = cfg[k];
@@ -2498,6 +2627,7 @@ function renderProviderSelects(){
   if(!providers.length){
     selP.innerHTML = '<option value="">（暂无供应商渠道）</option>';
     selM.innerHTML = '<option value="">—</option>';
+    updateChannelUI();
     return;
   }
   providers.forEach(p => {
@@ -2518,6 +2648,7 @@ function fillModels(pid, prefer){
   const models = (p && p.models) || [];
   if(!models.length){
     selM.innerHTML = '<option value="">（暂无配置模型）</option>';
+    updateChannelUI();
     return;
   }
   models.forEach(m => {
@@ -2527,7 +2658,7 @@ function fillModels(pid, prefer){
     selM.appendChild(o);
   });
   if(prefer && models.includes(prefer)) selM.value = prefer;
-  updateExecBadge();
+  updateChannelUI();
 }
 
 $('selProvider').onchange = () => {
@@ -2536,6 +2667,7 @@ $('selProvider').onchange = () => {
   updateExecBadge();
 };
 $('selModel').onchange = () => {
+  updateChannelUI();
   saveCfg();
   updateExecBadge();
 };
@@ -2560,7 +2692,7 @@ function renderProviderCards(){
       <div>
         <div class="prov-header">
           <div class="prov-title">${esc(p.name)}</div>
-          <span class="count-tag">${models.length} 个模型</span>
+          <span class="count-tag">${p.api_type === 'minimax' ? 'MiniMax 原生' : 'OpenAI 兼容'} · ${models.length} 个模型</span>
         </div>
         <div class="prov-url" style="margin-top:6px;">${esc(p.base)}</div>
         <div class="prov-models-chips" style="margin-top:10px;">
@@ -2587,6 +2719,8 @@ function startEditProvider(p){
   $('pv_base').value = p.base || '';
   $('pv_key').value = p.key || '';
   $('pv_models').value = (p.models || []).join('\n');
+  $('pv_type').value = p.api_type || 'openai';
+  updateProviderForm();
   $('formTitle').textContent = '编辑供应商：' + p.name;
   $('pv_save').textContent = '保存修改';
   $('pv_cancel').classList.remove('hide');
@@ -2596,6 +2730,8 @@ function startEditProvider(p){
 function resetProvForm(){
   editingId = null;
   ['pv_name', 'pv_base', 'pv_key', 'pv_models'].forEach(id => { $(id).value = ''; });
+  $('pv_type').value = 'openai';
+  updateProviderForm();
   $('formTitle').textContent = '添加新供应商渠道';
   $('pv_save').textContent = '保存供应商渠道';
   $('pv_cancel').classList.add('hide');
@@ -2607,6 +2743,29 @@ function resetProvForm(){
 $('pv_cancel').onclick = resetProvForm;
 $('pv_showkey').onchange = () => { $('pv_key').type = $('pv_showkey').checked ? 'text' : 'password'; };
 
+function updateProviderForm(fillDefaults = false){
+  const mini = $('pv_type').value === 'minimax';
+  $('pv_base_label').textContent = mini ? 'MiniMax API 地址' : 'Base URL (以 /v1 结尾)';
+  $('pv_base').placeholder = mini ? MINIMAX_DEFAULT_BASE : 'https://api.example.com/v1';
+  $('pv_key').placeholder = mini ? '填写 MiniMax 平台的 API Key' : 'sk-...';
+  $('pv_models').placeholder = mini ? MINIMAX_MODELS.join('\n') : 'gpt-image-2\nqwen-image-3.0\nsensenova-u1.5-lite';
+  $('pv_type_hint').textContent = mini
+    ? '支持 image-01 / image-01-live；默认使用国内接口，也可填写国际站或转发地址。'
+    : '适用于 OpenAI 兼容的图片接口与代理渠道。';
+  $('pv_fetch_text').textContent = mini ? '填入 MiniMax 预设模型' : '从接口自动拉取模型列表';
+  if(fillDefaults){
+    if(mini){
+      if(!$('pv_base').value.trim()) $('pv_base').value = MINIMAX_DEFAULT_BASE;
+      if(!$('pv_models').value.trim()) $('pv_models').value = MINIMAX_MODELS.join('\n');
+      if(!$('pv_name').value.trim()) $('pv_name').value = 'MiniMax';
+    } else if($('pv_base').value.trim() === MINIMAX_DEFAULT_BASE){
+      $('pv_base').value = '';
+      if($('pv_models').value.trim() === MINIMAX_MODELS.join('\n')) $('pv_models').value = '';
+    }
+  }
+}
+$('pv_type').onchange = () => { hideFetchPanel(); updateProviderForm(true); };
+
 async function saveProvider(){
   const name = $('pv_name').value.trim();
   const base = $('pv_base').value.trim();
@@ -2616,7 +2775,7 @@ async function saveProvider(){
     showToast('渠道名称和 Base URL 为必填项', 'warning');
     return;
   }
-  const body = { name, base, key, models };
+  const body = { name, base, key, models, api_type: $('pv_type').value };
   let r, saved;
   try{
     if(editingId){
@@ -2672,10 +2831,11 @@ $('pv_fetch').onclick = async () => {
   const base = $('pv_base').value.trim();
   const key = $('pv_key').value.trim();
   if(!base) return showToast('请先填写 Base URL', 'warning');
-  showToast('正在从接口拉取模型列表…', 'info');
+  const mini = $('pv_type').value === 'minimax';
+  showToast(mini ? '正在载入 MiniMax 预设模型…' : '正在从接口拉取模型列表…', 'info');
   try{
     const r = await fetch('/api/fetch-models', {
-      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ base, key })
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ base, key, api_type: $('pv_type').value })
     });
     const d = await r.json().catch(() => ({}));
     if(!r.ok) return showToast('拉取失败：' + (d.error || r.status), 'error');
@@ -2683,7 +2843,7 @@ $('pv_fetch').onclick = async () => {
     if(!list.length) return showToast('接口未返回任何可用模型', 'warning');
     fetchedModels = list;
     renderFetchPanel();
-    showToast(`成功获取 ${list.length} 个模型`, 'success');
+    showToast(`${mini ? '已载入预设' : '成功获取'} ${list.length} 个模型`, 'success');
   }catch(e){ showToast('拉取异常：' + e.message, 'error'); }
 };
 function renderFetchPanel(){
@@ -2765,25 +2925,30 @@ function loadInspireCfg(){
 function updateInspireUI(){
   const hint = $('inspire_cfg_hint');
   const btn = $('inspireBtn');
+  const expandBtn = $('expandBtn');
   if(hint){
-    hint.textContent = inspireCfg.model ? `已启用大模型 [${inspireCfg.model}] 实时构思` : '未配置（使用本地预置词库）';
+    hint.textContent = inspireCfg.model ? `已启用 [${inspireCfg.model}] 随机灵感与手动扩写` : '随机使用本地词库；扩写需配置文本模型';
     hint.style.color = inspireCfg.model ? 'var(--primary)' : 'var(--text-dim)';
   }
   if(btn){
-    btn.title = inspireCfg.model ? `由大模型 [${inspireCfg.model}] 实时构思或扩写` : '随机填入一个精选提示词灵感';
+    btn.title = inspireCfg.model ? `由 [${inspireCfg.model}] 用一句话确定主体和场景，替换当前内容` : '随机填入一句简短的画面构思，替换当前内容';
+  }
+  if(expandBtn){
+    expandBtn.title = inspireCfg.model ? `由 [${inspireCfg.model}] 扩写当前提示词，保留主体并补充细节` : '请先在「渠道设置」中配置 AI 灵感文本模型';
   }
 }
 function fillInspireProviders(){
   const sel = $('cfg_inspire_prov');
   if(!sel) return;
   sel.innerHTML = '';
-  providers.forEach(p => {
+  const textProviders = providers.filter(p => p.api_type !== 'minimax');
+  textProviders.forEach(p => {
     const o = document.createElement('option');
     o.value = p.id;
     o.textContent = p.name;
     sel.appendChild(o);
   });
-  if(inspireCfg.provider && providers.some(p => p.id === inspireCfg.provider)){
+  if(inspireCfg.provider && textProviders.some(p => p.id === inspireCfg.provider)){
     sel.value = inspireCfg.provider;
   }
 }
@@ -2813,16 +2978,33 @@ function buildPayload(){
   let extra = {};
   const ex = $('p_extra').value.trim();
   if(ex) extra = JSON.parse(ex);
+  if(!extra || typeof extra !== 'object' || Array.isArray(extra)) throw new Error('额外参数须为 JSON 对象');
 
-  let size = $('sizeCustomWrap').classList.contains('hide') ? sizeVal : ($('p_size').value.trim() || 'auto');
+  const mini = isMiniMax(), live = mini && $('selModel').value === 'image-01-live';
+  const custom = !$('sizeCustomWrap').classList.contains('hide');
+  let size = custom ? ($('p_size').value.trim() || 'auto') : sizeVal;
+  let aspectRatio = '';
+  if(mini && !custom){
+    const card = [...document.querySelectorAll('#ratioGrid .ratio-card')].find(c => c.dataset.v === size);
+    aspectRatio = (card && card.dataset.ratio) || '';
+    size = 'auto';
+  }
   if(size !== 'auto'){
     const m = size.match(/^(\d{2,5})x(\d{2,5})$/);
     if(!m) throw new Error('尺寸格式应为 宽x高，例如 2048x1152');
     const w = parseInt(m[1], 10), h = parseInt(m[2], 10);
-    if(w % 32 !== 0 || h % 32 !== 0) throw new Error('宽和高都必须是 32 的倍数（如 2048x1152）');
-    if(w < 512 || h < 512 || w > 4096 || h > 4096) throw new Error('尺寸限制在 512~4096 像素之间');
-    if(Math.max(w, h) / Math.min(w, h) > 3.001) throw new Error('长宽比不能超过 3:1');
+    if(mini){
+      if(live) throw new Error('image-01-live 请使用预设画幅');
+      if(w % 8 || h % 8 || w < 512 || h < 512 || w > 2048 || h > 2048){
+        throw new Error('MiniMax 宽高须为 512～2048，且为 8 的倍数');
+      }
+    } else {
+      if(w % 32 !== 0 || h % 32 !== 0) throw new Error('宽和高都必须是 32 的倍数（如 2048x1152）');
+      if(w < 512 || h < 512 || w > 4096 || h > 4096) throw new Error('尺寸限制在 512~4096 像素之间');
+      if(Math.max(w, h) / Math.min(w, h) > 3.001) throw new Error('长宽比不能超过 3:1');
+    }
   }
+  if(mini && [...$('prompt').value].length > 1500) throw new Error('MiniMax 提示词最多 1500 个字符');
 
   return {
     provider_id: $('selProvider').value,
@@ -2831,6 +3013,7 @@ function buildPayload(){
     prompt: $('prompt').value,
     params: {
       size: size === 'auto' ? '' : size,
+      aspect_ratio: aspectRatio,
       n: 1,   // 当前固定单张出图；上游不支持时不要盲目调高，会直接报错
       output_format: $('p_format').value,
       response_format: $('p_resp').value,
@@ -2839,7 +3022,9 @@ function buildPayload(){
       background: $('p_background').value,
       output_compression: $('p_comp').value,
       watermark: wmVal,
-      prompt_extend: peVal === 'default' ? null : (peVal === 'on')
+      prompt_extend: peVal === 'default' ? null : (peVal === 'on'),
+      minimax_style: live ? $('p_minimax_style').value : '',
+      minimax_style_weight: Number($('p_minimax_style_weight').value || 0.8)
     },
     extra
   };
@@ -2871,6 +3056,13 @@ async function go(){
   if(mode === 'edit' && !$('imgFile').files[0]){
     return showToast('参考图编辑模式必须上传一张参考图', 'warning');
   }
+  if(isMiniMax()){
+    if(!$('prompt').value.trim()) return showToast('MiniMax 生成图像需要填写提示词', 'warning');
+    const file = mode === 'edit' && $('imgFile').files[0];
+    if(file && (!['image/png', 'image/jpeg'].includes(file.type) || file.size >= 10 * 1024 * 1024)){
+      return showToast('MiniMax 人物参考图须为 PNG / JPEG，且小于 10 MB', 'warning');
+    }
+  }
 
   let payload;
   try { payload = buildPayload(); }
@@ -2892,13 +3084,13 @@ async function go(){
   $('stText').textContent = '正在连接本地服务并提交任务…';
   startTimer();
 
-  let doneEv = null, errEv = null, cancelled = false, netErr = null;
+  let doneEv = null, errEv = null, cancelled = false, netErr = null, activeStep = 2;
 
   try {
     if(mode === 'edit'){
       $('stText').textContent = '正在读取参考图及遮罩…';
       payload.image = await fileToB64($('imgFile').files[0]);
-      const mask = $('maskFile').files[0];
+      const mask = !isMiniMax() && $('maskFile').files[0];
       if(mask) payload.mask = await fileToB64(mask);
     }
 
@@ -2941,6 +3133,7 @@ async function go(){
           markStep(2, 'active');
           $('stText').textContent = `模型 [${ev.model || 'AI'}] 正在渲染精美细节…`;
         } else if(ev.stage === 'saving'){
+          activeStep = 3;
           markStep(2, 'done');
           markStep(3, 'active');
           $('stText').textContent = '上游数据返回成功，正在将高清图片落盘入库…';
@@ -2970,17 +3163,18 @@ async function go(){
     showToast('已取消本次生成等待', 'info');
     setTimeout(loadGallery, 3000);
   } else if(netErr){
-    markStep(2, 'error');
+    markStep(activeStep, 'error');
     finishProgress('failed');
     $('stText').textContent = '连接中断或错误: ' + friendlyErrMsg(netErr.message);
     showToast('生成失败: ' + friendlyErrMsg(netErr.message), 'error');
   } else if(errEv){
-    markStep(2, 'error');
+    markStep(activeStep, 'error');
     finishProgress('failed');
     let msg = (typeof errEv.message === 'string') ? errEv.message : JSON.stringify(errEv.message);
     msg = friendlyErrMsg(msg, errEv.http);
-    $('stText').textContent = '生成失败: ' + msg;
-    showToast('生成失败: ' + msg, 'error');
+    const prefix = activeStep === 3 ? '图像已生成，保存失败: ' : '生成失败: ';
+    $('stText').textContent = prefix + msg;
+    showToast(prefix + msg, 'error');
   } else if(doneEv && doneEv.items && doneEv.items.length){
     markStep(1, 'done'); markStep(2, 'done'); markStep(3, 'done');
     finishProgress('done');
