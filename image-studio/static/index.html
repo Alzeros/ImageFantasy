@@ -3,2139 +3,1421 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Image Fantasy · AI 图像创作工坊</title>
+<title>Image Fantasy</title>
 <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
 <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" sizes="any">
 <style>
-  /* ================= 现代设计系统 & 主题变量 ================= */
+  /* ================= 设计变量 ================= */
   :root {
-    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-    --radius-sm: 8px;
-    --radius-md: 12px;
-    --radius-lg: 18px;
-    --radius-xl: 24px;
-    --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    --font: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --r-xs: 4px;
+    --r-sm: 6px;
+    --r-md: 8px;
+    --r-lg: 10px;
+    --panel-w: 340px;
+    --info-w: 288px;
+    --ease: cubic-bezier(.2, .8, .2, 1);
   }
 
-  /* 暗色模式（默认） */
+  /* 深色（默认）：近黑中性色，色彩留给作品 */
   [data-theme="dark"] {
-    --bg-base: #0b0f19;
-    --bg-surface: #111827;
-    --bg-card: rgba(19, 26, 42, 0.75);
-    --bg-card-hover: rgba(28, 38, 62, 0.85);
-    --bg-input: rgba(15, 23, 42, 0.8);
-    --bg-input-focus: #0f172a;
-    --border: rgba(255, 255, 255, 0.08);
-    --border-subtle: rgba(255, 255, 255, 0.05);
-    --border-hover: rgba(255, 255, 255, 0.18);
-    --border-active: #6366f1;
-    --text-main: #f8fafc;
-    --text-muted: #94a3b8;
-    --text-dim: #64748b;
-    --primary: #6366f1;
-    --primary-hover: #4f46e5;
-    --primary-glow: rgba(99, 102, 241, 0.35);
-    --primary-light: rgba(99, 102, 241, 0.14);
-    --accent: #8b5cf6;
-    --accent-glow: rgba(139, 92, 246, 0.25);
-    --grad-primary: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #d946ef 100%);
-    --grad-hover: linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #c026d3 100%);
-    --grad-card: linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0) 100%);
-    --success: #10b981;
-    --success-bg: rgba(16, 185, 129, 0.12);
-    --warning: #f59e0b;
-    --warning-bg: rgba(245, 158, 11, 0.12);
-    --danger: #ef4444;
-    --danger-bg: rgba(239, 68, 68, 0.12);
-    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
-    --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.35);
-    --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.5);
-    --backdrop: rgba(11, 15, 25, 0.85);
+    color-scheme: dark;
+    --canvas: #0b0b0c;
+    --panel: #121213;
+    --raised: #1a1a1c;
+    --field: rgba(255, 255, 255, .045);
+    --field-hover: rgba(255, 255, 255, .075);
+    --line: rgba(255, 255, 255, .07);
+    --line-2: rgba(255, 255, 255, .13);
+    --text: #ececec;
+    --text-2: #a3a3a3;
+    --text-3: #7d7d7d;
+    --on-bg: rgba(255, 255, 255, .11);
+    --on-shadow: none;
+    --primary: #ececec;
+    --primary-text: #0b0b0c;
+    --primary-hover: #ffffff;
+    --focus: rgba(255, 255, 255, .55);
+    --img-shadow: 0 0 0 1px rgba(255, 255, 255, .04);
+    --pop-shadow: 0 0 0 1px rgba(255, 255, 255, .08), 0 18px 48px rgba(0, 0, 0, .55);
+    --sweep: rgba(255, 255, 255, .05);
+    --scroll: rgba(255, 255, 255, .14);
+    --ok: #6fbf86;
+    --warn: #d9a54a;
+    --danger: #ef6461;
   }
 
-  /* 浅色模式 */
+  /* 浅色：暖白纸感 */
   [data-theme="light"] {
-    --bg-base: #f8fafc;
-    --bg-surface: #ffffff;
-    --bg-card: rgba(255, 255, 255, 0.9);
-    --bg-card-hover: #ffffff;
-    --bg-input: #f1f5f9;
-    --bg-input-focus: #ffffff;
-    --border: rgba(0, 0, 0, 0.08);
-    --border-subtle: rgba(0, 0, 0, 0.04);
-    --border-hover: rgba(0, 0, 0, 0.16);
-    --border-active: #6366f1;
-    --text-main: #0f172a;
-    --text-muted: #64748b;
-    --text-dim: #94a3b8;
-    --primary: #6366f1;
-    --primary-hover: #4f46e5;
-    --primary-glow: rgba(99, 102, 241, 0.2);
-    --primary-light: rgba(99, 102, 241, 0.1);
-    --accent: #8b5cf6;
-    --accent-glow: rgba(139, 92, 246, 0.15);
-    --grad-primary: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #d946ef 100%);
-    --grad-hover: linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #c026d3 100%);
-    --grad-card: linear-gradient(180deg, rgba(255, 255, 255, 0.7) 0%, rgba(255, 255, 255, 0.4) 100%);
-    --success: #059669;
-    --success-bg: rgba(5, 150, 105, 0.1);
-    --warning: #d97706;
-    --warning-bg: rgba(217, 119, 6, 0.1);
-    --danger: #dc2626;
-    --danger-bg: rgba(220, 38, 38, 0.1);
-    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04);
-    --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.08);
-    --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.12);
-    --backdrop: rgba(248, 250, 252, 0.88);
+    color-scheme: light;
+    --canvas: #f1f1ef;
+    --panel: #fafaf9;
+    --raised: #ffffff;
+    --field: rgba(0, 0, 0, .04);
+    --field-hover: rgba(0, 0, 0, .065);
+    --line: rgba(0, 0, 0, .075);
+    --line-2: rgba(0, 0, 0, .14);
+    --text: #1b1b1b;
+    --text-2: #545451;
+    --text-3: #6f6f6b;
+    --on-bg: #ffffff;
+    --on-shadow: 0 0 0 1px rgba(0, 0, 0, .06), 0 1px 2px rgba(0, 0, 0, .08);
+    --primary: #1b1b1b;
+    --primary-text: #fafafa;
+    --primary-hover: #000000;
+    --focus: rgba(0, 0, 0, .5);
+    --img-shadow: 0 1px 2px rgba(0, 0, 0, .06), 0 14px 36px -10px rgba(0, 0, 0, .22);
+    --pop-shadow: 0 0 0 1px rgba(0, 0, 0, .06), 0 18px 48px rgba(0, 0, 0, .14);
+    --sweep: rgba(255, 255, 255, .6);
+    --scroll: rgba(0, 0, 0, .16);
+    --ok: #2f8f4e;
+    --warn: #b7791f;
+    --danger: #d93f3c;
   }
 
-  /* 基础重置 */
+  /* ================= 基础 ================= */
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
   body {
     font-family: var(--font);
-    background: var(--bg-base);
-    color: var(--text-main);
+    font-size: 13px;
     line-height: 1.5;
+    color: var(--text);
+    background: var(--canvas);
     -webkit-font-smoothing: antialiased;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    overflow-x: hidden;
+  }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button { background: none; border: 0; cursor: pointer; }
+  button:disabled { cursor: not-allowed; }
+  a { color: inherit; text-decoration: none; }
+  svg { display: block; flex-shrink: 0; }
+  h1, h2 { font: inherit; }
+  kbd { font: inherit; }
+  .hide { display: none !important; }
+  .num { font-variant-numeric: tabular-nums; }
+  .mono { font-family: var(--mono); }
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  ::placeholder { color: var(--text-3); }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: var(--scroll);
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
   }
 
-  /* 滚动条美化 */
-  ::-webkit-scrollbar { width: 7px; height: 7px; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.25); border-radius: 999px; }
-  ::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.45); }
+  /* ================= 应用布局：左侧参数栏 + 右侧画布 ================= */
+  .app {
+    display: grid;
+    grid-template-columns: var(--panel-w) minmax(0, 1fr);
+    height: 100vh;
+    height: 100dvh;
+  }
 
-  /* ================= 顶部导航栏 ================= */
-  .app-header {
-    position: sticky;
-    top: 0;
-    z-index: 40;
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    background: var(--backdrop);
-    border-bottom: 1px solid var(--border);
-    padding: 10px 24px;
+  /* ================= 左侧参数栏 ================= */
+  .panel {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    background: var(--panel);
+    border-right: 1px solid var(--line);
+  }
+  .panel-head {
+    flex-shrink: 0;
+    height: 56px;
+    padding: 0 12px 0 20px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 16px;
   }
   .brand {
     display: flex;
     align-items: center;
-    gap: 12px;
-    text-decoration: none;
-    color: inherit;
-    cursor: pointer;
-  }
-  .brand-icon {
-    width: 38px;
-    height: 38px;
-    border-radius: 10px;
-    background: var(--grad-primary);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #fff;
-    box-shadow: 0 4px 14px var(--primary-glow);
-    flex-shrink: 0;
-  }
-  .brand-title {
-    font-size: 17px;
-    font-weight: 700;
-    letter-spacing: -0.02em;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .brand-badge {
-    font-size: 11px;
+    gap: 9px;
+    font-size: 14px;
     font-weight: 600;
-    padding: 2px 8px;
-    border-radius: 999px;
-    background: var(--primary-glow);
-    color: var(--primary);
-    border: 1px solid var(--border-active);
+    letter-spacing: -.01em;
   }
-  .header-tabs {
-    display: flex;
-    background: var(--bg-input);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    padding: 3px;
-    gap: 2px;
-  }
-  .tab-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    padding: 7px 18px;
-    border-radius: var(--radius-sm);
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text-muted);
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    transition: var(--transition);
-  }
-  .tab-btn:hover { color: var(--text-main); }
-  .tab-btn.active {
-    background: var(--bg-surface);
-    color: var(--text-main);
-    box-shadow: var(--shadow-sm);
-  }
-  .header-actions {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-  .svc-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    padding: 5px 12px;
-    border-radius: 999px;
-    font-size: 12px;
-    font-weight: 500;
-    background: var(--bg-input);
-    border: 1px solid var(--border);
-    color: var(--text-muted);
-    transition: var(--transition);
-  }
-  .svc-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--text-dim);
-    position: relative;
-  }
-  .svc-badge.ok .svc-dot {
-    background: var(--success);
-    box-shadow: 0 0 8px var(--success);
-  }
-  .svc-badge.ok .svc-dot::after {
-    content: '';
-    position: absolute;
-    inset: -3px;
-    border-radius: 50%;
-    border: 1px solid var(--success);
-    opacity: 0.6;
-    animation: pulse 2s infinite;
-  }
-  .svc-badge.bad .svc-dot { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
-  .svc-badge.bad { color: var(--danger); }
-
+  .head-actions { display: flex; gap: 2px; }
   .icon-btn {
-    width: 36px;
-    height: 36px;
-    border-radius: var(--radius-sm);
-    background: var(--bg-input);
-    border: 1px solid var(--border);
-    color: var(--text-muted);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: var(--transition);
-  }
-  .icon-btn:hover {
-    color: var(--text-main);
-    border-color: var(--border-hover);
-    background: var(--bg-surface);
-  }
-
-  /* ================= 工作台双栏布局 ================= */
-  .workbench {
-    flex: 1;
+    width: 30px;
+    height: 30px;
     display: grid;
-    grid-template-columns: 440px 1fr;
-    min-height: calc(100vh - 61px);
-    max-width: 1720px;
-    margin: 0 auto;
-    width: 100%;
+    place-items: center;
+    border-radius: var(--r-sm);
+    color: var(--text-2);
+    transition: background .15s, color .15s;
   }
-  @media (max-width: 1080px) {
-    .workbench { grid-template-columns: 1fr; }
-  }
+  .icon-btn:hover { background: var(--field-hover); color: var(--text); }
 
-  /* ================= 左侧控制面板 ================= */
-  .control-sidebar {
-    border-right: 1px solid var(--border);
-    background: var(--bg-surface);
-    padding: 22px 20px 40px;
+  .panel-body {
+    flex: 1;
+    min-height: 0;
     overflow-y: auto;
-    height: calc(100vh - 61px);
-    position: sticky;
-    top: 61px;
+    padding: 4px 20px 20px;
     display: flex;
     flex-direction: column;
-    gap: 18px;
+    gap: 24px;
   }
-  @media (max-width: 1080px) {
-    .control-sidebar {
-      position: static;
-      height: auto;
-      border-right: none;
-      border-bottom: 1px solid var(--border);
-    }
-  }
-
-  /* 控制卡片 */
-  .pane-card {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    padding: 16px;
-    box-shadow: var(--shadow-sm);
-    position: relative;
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    transition: var(--transition);
-  }
-  .pane-card:hover {
-    border-color: var(--border-hover);
-  }
-  .card-header {
+  .sec { display: flex; flex-direction: column; gap: 8px; }
+  .sec-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 12px;
+    gap: 8px;
+    min-height: 24px;
   }
-  .card-title {
-    font-size: 13px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--text-muted);
-    display: flex;
-    align-items: center;
-    gap: 7px;
+  .sec-label { font-size: 12px; font-weight: 500; color: var(--text-2); }
+  .sec-meta { font-size: 12px; color: var(--text-3); }
+  .sec-tools { display: flex; align-items: center; gap: 2px; margin-right: -4px; }
+  .count { margin-right: 4px; font-size: 12px; color: var(--text-3); }
+  .count.over { color: var(--danger); }
+  .mini-icon {
+    width: 24px;
+    height: 24px;
+    display: grid;
+    place-items: center;
+    border-radius: 5px;
+    color: var(--text-3);
+    transition: background .15s, color .15s;
   }
+  .mini-icon:hover { background: var(--field-hover); color: var(--text); }
+  .field-hint { font-size: 12px; line-height: 1.6; color: var(--text-3); }
 
-  /* 模式切换胶囊 */
-  .segmented-switch {
-    display: flex;
-    background: var(--bg-input);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    padding: 3px;
-    gap: 4px;
+  /* 模型选择器：渠道与模型合并为一个控件 */
+  .picker { position: relative; }
+  .picker-btn {
     width: 100%;
-  }
-  .seg-opt {
-    flex: 1;
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 6px;
-    padding: 8px 12px;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text-muted);
-    border: none;
-    background: transparent;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    transition: var(--transition);
+    gap: 10px;
+    padding: 8px 10px 8px 12px;
+    border-radius: var(--r-md);
+    background: var(--field);
+    text-align: left;
+    transition: background .15s;
   }
-  .seg-opt:hover { color: var(--text-main); }
-  .seg-opt.active {
-    background: var(--bg-surface);
-    color: var(--primary);
-    box-shadow: var(--shadow-sm);
+  .picker-btn:hover, .picker.open .picker-btn { background: var(--field-hover); }
+  .picker-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .picker-main, .picker-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .picker-main { font-size: 13px; font-weight: 500; }
+  .picker-sub { font-size: 12px; color: var(--text-3); }
+  .picker-btn > svg { color: var(--text-3); }
+  .menu {
+    position: absolute;
+    z-index: 30;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    max-height: min(420px, 60vh);
+    overflow-y: auto;
+    padding: 6px;
+    border-radius: var(--r-lg);
+    background: var(--raised);
+    box-shadow: var(--pop-shadow);
+    animation: popIn .14s var(--ease);
   }
-
-  /* 下拉与表单字段 */
-  .form-group {
+  .menu-group + .menu-group { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--line); }
+  .menu-label {
     display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-  .form-label {
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 8px 4px;
     font-size: 12px;
-    font-weight: 600;
-    color: var(--text-muted);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    min-height: 18px;
-    white-space: nowrap;
-    gap: 6px;
+    color: var(--text-3);
   }
-  .lbl-sub {
-    font-size: 11px;
-    font-weight: 500;
-    color: var(--text-dim);
-    font-family: ui-monospace, Menlo, Consolas, monospace;
-    opacity: 0.85;
-  }
-  .form-row-2 {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-  }
-  .form-row-3 {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
-  }
-  .input-styled, .select-styled, .textarea-styled {
+  .menu-label span:first-child { color: var(--text-2); font-weight: 500; }
+  .menu-item {
     width: 100%;
-    background: var(--bg-input);
-    border: 1px solid var(--border);
-    color: var(--text-main);
-    border-radius: var(--radius-md);
-    padding: 9px 12px;
-    font-size: 13px;
-    font-family: inherit;
-    transition: var(--transition);
-  }
-  .input-styled:focus, .select-styled:focus, .textarea-styled:focus {
-    outline: none;
-    border-color: var(--border-active);
-    background: var(--bg-input-focus);
-    box-shadow: 0 0 0 3px var(--primary-glow);
-  }
-  .select-styled {
-    appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 12px center;
-    padding-right: 32px;
-    cursor: pointer;
-  }
-
-  /* 提示词输入区域 */
-  .prompt-box {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-  .textarea-styled {
-    min-height: 96px;
-    resize: vertical;
-    line-height: 1.6;
-    padding: 12px;
-  }
-  .prompt-toolbar {
+    height: 32px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    flex-wrap: wrap;
+    padding: 0 8px;
+    border-radius: var(--r-sm);
+    font-size: 13px;
+    text-align: left;
   }
-  .quick-tools {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-  }
-  .prompt-assist-actions {
-    display: flex;
-    gap: 8px;
-    margin-top: 8px;
-  }
-  .prompt-assist-actions .mini-btn {
+  .menu-item span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .menu-item:hover, .menu-item:focus-visible { background: var(--field-hover); outline: none; }
+  .menu-item svg { opacity: 0; }
+  .menu-item.on svg { opacity: 1; }
+  .menu-none { padding: 4px 8px 8px; font-size: 12px; color: var(--text-3); }
+  .menu-foot { display: flex; gap: 2px; margin-top: 4px; padding-top: 6px; border-top: 1px solid var(--line); }
+  .menu-link {
     flex: 1;
-    justify-content: center;
-    padding: 7px 10px;
+    height: 30px;
+    border-radius: var(--r-sm);
+    font-size: 12.5px;
+    color: var(--text-2);
   }
-  .prompt-assist-actions .mini-btn:disabled {
-    opacity: 0.6;
-    cursor: wait;
+  .menu-link:hover, .menu-link:focus-visible { background: var(--field-hover); color: var(--text); outline: none; }
+
+  /* 提示词输入框：参考图以附件形式挂在框内 */
+  .composer {
+    border-radius: var(--r-md);
+    background: var(--field);
+    transition: box-shadow .15s, background .15s;
   }
-  .mini-btn {
+  .composer:focus-within { box-shadow: 0 0 0 1px var(--line-2); }
+  .composer.dragging { background: var(--field-hover); box-shadow: 0 0 0 1.5px var(--text-2); }
+  .composer textarea {
+    display: block;
+    width: 100%;
+    height: 150px;
+    resize: none;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    font-size: 14px;
+    line-height: 1.7;
+    padding: 11px 14px 4px;
+  }
+  .attach { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 10px 0; }
+  .att {
+    max-width: 100%;
+    height: 36px;
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    padding: 4px 9px;
-    border-radius: var(--radius-sm);
-    font-size: 11px;
-    font-weight: 500;
-    background: var(--bg-input);
-    border: 1px solid var(--border);
-    color: var(--text-muted);
+    gap: 8px;
+    padding: 3px 4px 3px 3px;
+    border: 1px solid transparent;
+    border-radius: var(--r-sm);
+    background: var(--field-hover);
+    font-size: 12px;
+    color: var(--text-2);
     cursor: pointer;
-    transition: var(--transition);
-  }
-  .mini-btn:hover {
-    color: var(--text-main);
-    border-color: var(--border-hover);
-    background: var(--bg-surface);
-  }
-  .mini-btn.dice {
-    color: var(--primary);
-    border-color: var(--primary-glow);
-    background: var(--primary-light);
-  }
-  .mini-btn.dice:hover {
-    box-shadow: 0 0 10px var(--primary-glow);
-  }
-
-  /* 风格标签库 */
-  .tag-cloud {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-top: 4px;
-  }
-  .tag-chip {
-    font-size: 11px;
-    padding: 3px 9px;
-    border-radius: 999px;
-    background: var(--bg-input);
-    border: 1px solid var(--border-subtle);
-    color: var(--text-dim);
-    cursor: pointer;
-    transition: var(--transition);
     user-select: none;
   }
-  .tag-chip:hover {
-    color: var(--text-main);
-    border-color: var(--border-hover);
-    background: var(--bg-card-hover);
+  .att img { width: 28px; height: 28px; border-radius: 4px; object-fit: cover; }
+  .att-name { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .att-x {
+    width: 22px;
+    height: 22px;
+    display: grid;
+    place-items: center;
+    border-radius: 4px;
+    color: var(--text-3);
+  }
+  .att-x:hover { background: var(--field-hover); color: var(--text); }
+  .att.add {
+    gap: 6px;
+    padding: 0 10px;
+    border-color: var(--line-2);
+    border-style: dashed;
+    background: transparent;
+    color: var(--text-3);
+  }
+  .att.add:hover { color: var(--text); border-color: var(--text-3); }
+  .att.dragging { border-style: solid; border-color: var(--text-2); color: var(--text); }
+  .composer-foot { display: flex; align-items: center; gap: 2px; padding: 6px; }
+  .tool {
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 8px;
+    border-radius: var(--r-sm);
+    font-size: 12.5px;
+    color: var(--text-2);
+    white-space: nowrap;
+    transition: background .15s, color .15s;
+  }
+  .tool:hover:not(:disabled) { background: var(--field-hover); color: var(--text); }
+  .tool:disabled { opacity: .6; cursor: wait; }
+  .tool.sq { width: 28px; padding: 0; justify-content: center; }
+  .tool.on { color: var(--text); }
+  .vsep { width: 1px; height: 14px; margin: 0 4px; background: var(--line-2); }
+  .spin {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 1.5px solid currentColor;
+    border-right-color: transparent;
+    animation: spin .8s linear infinite;
   }
 
-  /* 可视化比例矩阵 */
+  .chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .chips-label { margin-right: 2px; font-size: 12px; color: var(--text-3); }
+  .chip {
+    height: 24px;
+    padding: 0 8px;
+    border-radius: var(--r-sm);
+    font-size: 12px;
+    color: var(--text-2);
+    box-shadow: inset 0 0 0 1px var(--line);
+    transition: color .15s, box-shadow .15s;
+  }
+  .chip:hover { color: var(--text); box-shadow: inset 0 0 0 1px var(--line-2); }
+
+  /* 比例 */
   .ratio-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 8px;
+    gap: 3px;
+    padding: 3px;
+    border-radius: var(--r-md);
+    background: var(--field);
   }
   .ratio-card {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    padding: 10px 4px;
-    border-radius: var(--radius-md);
-    background: var(--bg-input);
-    border: 1px solid var(--border);
-    cursor: pointer;
-    transition: var(--transition);
-    text-align: center;
-    user-select: none;
-  }
-  .ratio-card:hover {
-    border-color: var(--border-hover);
-    background: var(--bg-surface);
-  }
-  .ratio-card.active {
-    border-color: var(--primary);
-    background: var(--bg-surface);
-    box-shadow: 0 0 0 1px var(--primary), 0 4px 12px var(--primary-glow);
-  }
-  .ratio-visual {
-    border: 1.5px solid var(--text-dim);
-    border-radius: 3px;
-    transition: var(--transition);
-  }
-  .ratio-card.active .ratio-visual {
-    border-color: var(--primary);
-    background: var(--primary-glow);
-  }
-  .ratio-card:hover .ratio-visual {
-    border-color: var(--text-muted);
-  }
-  .ratio-visual.r-auto { width: 18px; height: 18px; border-style: dashed; }
-  .ratio-visual.r-1-1 { width: 16px; height: 16px; }
-  .ratio-visual.r-16-9 { width: 22px; height: 13px; }
-  .ratio-visual.r-9-16 { width: 13px; height: 22px; }
-  .ratio-visual.r-3-2 { width: 21px; height: 14px; }
-  .ratio-visual.r-2-3 { width: 14px; height: 21px; }
-  .ratio-visual.r-4k { width: 18px; height: 18px; border-width: 2px; }
-  .ratio-visual.r-custom { width: 18px; height: 18px; border-style: dotted; }
-  .ratio-name {
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text-main);
-  }
-  .ratio-desc {
-    font-size: 10px;
-    color: var(--text-dim);
-  }
-
-  /* 开关分段控制器与药丸组 */
-  .seg-control {
-    display: flex;
-    background: var(--bg-input);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: 3px;
-    gap: 3px;
-    width: 100%;
-  }
-  .seg-btn {
-    flex: 1;
-    padding: 6px 4px;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text-muted);
-    background: transparent;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-    transition: var(--transition);
-    text-align: center;
-    white-space: nowrap;
-    font-family: inherit;
-  }
-  .seg-btn:hover { color: var(--text-main); }
-  .seg-btn.active {
-    background: var(--bg-surface);
-    color: var(--primary);
-    box-shadow: var(--shadow-sm);
-  }
-  .pill-group {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-  }
-  .pill-btn {
-    padding: 6px 14px;
-    border-radius: 999px;
-    font-size: 12px;
-    font-weight: 500;
-    border: 1px solid var(--border);
-    background: var(--bg-input);
-    color: var(--text-muted);
-    cursor: pointer;
-    transition: var(--transition);
-  }
-  .pill-btn:hover {
-    color: var(--text-main);
-    border-color: var(--border-hover);
-  }
-  .pill-btn.active {
-    background: var(--primary);
-    color: #fff;
-    border-color: var(--primary);
-    box-shadow: 0 2px 8px var(--primary-glow);
-  }
-
-  /* 上传区域 Dropzone */
-  .dropzone {
-    border: 2px dashed var(--border);
-    border-radius: var(--radius-md);
-    padding: 16px;
-    text-align: center;
-    background: var(--bg-input);
-    cursor: pointer;
-    transition: var(--transition);
-    position: relative;
-    overflow: hidden;
-  }
-  .dropzone-text {
+    height: 46px;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: 4px;
-    color: var(--text-dim);
-    pointer-events: none;
+    border-radius: var(--r-sm);
+    font-size: 12px;
+    color: var(--text-2);
     user-select: none;
-    min-height: 44px;
+    transition: background .15s, color .15s;
   }
-  .dropzone:hover {
-    border-color: var(--primary);
-    background: var(--bg-card-hover);
-  }
-  .dropzone.has-file {
-    border-style: solid;
-    padding: 10px;
-  }
-  .dropzone.dragging {
-    border-color: var(--primary);
-    border-style: solid;
-    background: var(--primary-light);
-    box-shadow: 0 0 12px var(--primary-glow);
-  }
-  .dropzone input[type="file"] {
-    position: absolute;
-    inset: 0;
-    opacity: 0;
-    cursor: pointer;
-    width: 100%;
-    height: 100%;
-    z-index: 2;
-  }
-  .dropzone-preview {
+  .ratio-card:hover { color: var(--text); }
+  .ratio-card.active { background: var(--on-bg); box-shadow: var(--on-shadow); color: var(--text); }
+  .ratio-glyph { height: 20px; display: flex; align-items: center; justify-content: center; }
+  .ratio-visual { border: 1.3px solid currentColor; border-radius: 2px; opacity: .75; }
+  .ratio-card.active .ratio-visual { opacity: 1; }
+  .r-auto { width: 13px; height: 13px; border-style: dashed; }
+  .r-1-1 { width: 13px; height: 13px; }
+  .r-16-9 { width: 19px; height: 11px; }
+  .r-9-16 { width: 11px; height: 19px; }
+  .r-3-2 { width: 18px; height: 12px; }
+  .r-2-3 { width: 12px; height: 18px; }
+  .r-4-3 { width: 16px; height: 12px; }
+  .r-3-4 { width: 12px; height: 16px; }
+  .r-21-9 { width: 21px; height: 9px; }
+  .r-4k { width: 14px; height: 14px; border-width: 2px; }
+  .r-custom { width: 13px; height: 13px; border-style: dotted; }
+
+  /* 选项行 */
+  .rows { display: flex; flex-direction: column; }
+  .rows > * + * { border-top: 1px solid var(--line); }
+  .row {
+    min-height: 38px;
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 12px;
-    text-align: left;
   }
-  .dropzone-img {
-    width: 64px;
-    height: 64px;
-    border-radius: var(--radius-sm);
-    object-fit: cover;
-    border: 1px solid var(--border);
+  .row-label { font-size: 13px; }
+  .row-meta { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-3); }
+  .switch {
+    position: relative;
+    flex: none;
+    width: 30px;
+    height: 18px;
+    border-radius: 999px;
+    background: var(--line-2);
+    transition: background .2s;
   }
-  .dropzone-info {
-    flex: 1;
+  .switch::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .25);
+    transition: transform .2s var(--ease), background .2s;
+  }
+  .switch[aria-checked="true"] { background: var(--text); }
+  .switch[aria-checked="true"]::after { transform: translateX(12px); background: var(--panel); }
+  .seg { display: flex; gap: 2px; padding: 2px; border-radius: var(--r-sm); background: var(--field); }
+  .seg button {
+    height: 24px;
+    padding: 0 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--text-2);
+    white-space: nowrap;
+    transition: background .15s, color .15s;
+  }
+  .seg button:hover { color: var(--text); }
+  .seg button.active { background: var(--on-bg); box-shadow: var(--on-shadow); color: var(--text); }
+
+  details.advanced summary {
+    min-height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    list-style: none;
+    cursor: pointer;
+    user-select: none;
+  }
+  details.advanced summary::-webkit-details-marker { display: none; }
+  details.advanced summary:hover .row-label { color: var(--text); }
+  details.advanced .row-meta svg { transition: transform .2s var(--ease); }
+  details.advanced[open] .row-meta svg { transform: rotate(90deg); }
+  .advanced-content { display: flex; flex-direction: column; gap: 12px; padding: 4px 0 8px; }
+
+  /* 表单控件（高级参数、设置页共用） */
+  .form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .form-group { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .form-label { font-size: 12px; color: var(--text-2); white-space: nowrap; }
+  .input, .select {
+    width: 100%;
+    height: 32px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: var(--r-sm);
+    outline: 0;
+    background: var(--field);
+    font-size: 12.5px;
+    transition: background .15s, box-shadow .15s;
+  }
+  .input:hover, .select:hover { background: var(--field-hover); }
+  .input:focus, .select:focus { background: var(--field-hover); box-shadow: 0 0 0 1px var(--line-2); }
+  .input:disabled, .select:disabled { opacity: .5; }
+  .select {
+    appearance: none;
+    padding-right: 28px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 9px center;
+    cursor: pointer;
+  }
+  .textarea { height: auto; min-height: 56px; padding: 8px 10px; line-height: 1.6; resize: vertical; }
+
+  /* 生成按钮 */
+  .panel-foot { flex-shrink: 0; padding: 14px 20px 18px; border-top: 1px solid var(--line); }
+  .go {
+    width: 100%;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    border-radius: var(--r-md);
+    background: var(--primary);
+    color: var(--primary-text);
+    font-size: 14px;
+    font-weight: 600;
+    transition: background .15s;
+  }
+  .go:hover:not(:disabled) { background: var(--primary-hover); }
+  .go:disabled { background: var(--field-hover); color: var(--text-2); cursor: default; }
+  .go kbd { font-size: 12px; font-weight: 500; opacity: .45; }
+  .go:disabled kbd { display: none; }
+  .go-spin { display: none; }
+  .go:disabled .go-spin { display: inline-block; }
+
+  /* ================= 右侧画布 ================= */
+  .canvas { min-width: 0; overflow-y: auto; }
+  .canvas-inner { max-width: 1180px; margin: 0 auto; padding: 36px 48px 72px; }
+  .svc-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 24px;
+    padding: 9px 12px;
+    border-radius: var(--r-md);
+    background: var(--field);
+    font-size: 12.5px;
+    color: var(--text-2);
+  }
+  .svc-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--danger); }
+
+  /* 舞台：空状态 / 生成进度 / 作品详情，三者同一时间只显示一个 */
+  .stage-view { display: flex; align-items: flex-start; gap: 40px; }
+  .stage.stacked .stage-view { flex-direction: column; gap: 20px; }
+  .figure { position: relative; flex: none; max-width: 100%; }
+  .figure > img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    border-radius: var(--r-md);
+    box-shadow: var(--img-shadow);
+    cursor: zoom-in;
+  }
+  .stage-info {
+    flex: 0 1 var(--info-w);
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+    padding-top: 2px;
+  }
+  .stage.stacked .stage-info { flex: none; width: 100%; }
+  .info-title { font-size: 15px; font-weight: 600; }
+  .info-text { margin-top: 6px; font-size: 13px; line-height: 1.75; color: var(--text-2); }
+  .info-text kbd { color: var(--text); }
+  .empty-frame {
+    width: 100%;
+    height: 100%;
+    display: grid;
+    place-items: center;
+    border: 1px dashed var(--line-2);
+    border-radius: var(--r-md);
+    color: var(--text-3);
+  }
+
+  .ph { position: relative; width: 100%; height: 100%; overflow: hidden; border-radius: var(--r-md); background: var(--field); }
+  .ph::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(100deg, transparent 25%, var(--sweep) 50%, transparent 75%);
+    animation: sweep 2.2s var(--ease) infinite;
+  }
+  .progress-card.finished .ph::before { animation: none; opacity: 0; }
+  .ph-txt { position: absolute; inset: 0; display: grid; place-items: center; font-size: 12px; color: var(--text-3); }
+  .progress-sub { margin-top: 4px; font-size: 12.5px; color: var(--text-3); }
+  .progress-card.failed .info-title { color: var(--danger); }
+  .step-list { display: flex; flex-direction: column; gap: 12px; font-size: 13px; }
+  .step-node { display: flex; align-items: center; gap: 10px; color: var(--text-3); transition: color .2s; }
+  .step-mark { width: 16px; height: 16px; flex: none; display: grid; place-items: center; }
+  .step-mark::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .55; }
+  .step-node.active { color: var(--text); }
+  .step-node.active .step-mark::before {
+    width: 7px;
+    height: 7px;
+    opacity: 1;
+    box-shadow: 0 0 0 4px var(--field-hover);
+    animation: breathe 1.6s ease-in-out infinite;
+  }
+  .progress-card.finished .step-node .step-mark::before { animation: none; }
+  .step-node.done { color: var(--text-2); }
+  .step-node.done .step-mark::before {
+    width: 9px;
+    height: 5px;
+    border-radius: 0;
+    background: none;
+    border-left: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: translateY(-1px) rotate(-45deg);
+    opacity: 1;
+  }
+  .step-node.error { color: var(--danger); }
+  .step-node.error .step-mark::before { opacity: 1; }
+  .progress-msg { display: flex; flex-direction: column; gap: 4px; }
+  .progress-status-text { font-size: 12.5px; line-height: 1.6; color: var(--text-2); word-break: break-word; }
+  .progress-card.failed .progress-status-text { color: var(--danger); }
+  .progress-timer { font-size: 12px; color: var(--text-3); }
+
+  .blk { display: flex; flex-direction: column; gap: 8px; }
+  .blk-head { display: flex; align-items: center; justify-content: space-between; margin-right: -4px; }
+  .lbl { font-size: 12px; color: var(--text-3); }
+  .prompt-full {
+    font-size: 13.5px;
+    line-height: 1.75;
+    white-space: pre-wrap;
+    word-break: break-word;
+    display: -webkit-box;
+    -webkit-line-clamp: 8;
+    -webkit-box-orient: vertical;
     overflow: hidden;
   }
-  .dropzone-name {
+  .prompt-full.expanded { display: block; max-height: 46vh; overflow-y: auto; }
+  .more { align-self: flex-start; font-size: 12px; color: var(--text-2); }
+  .more:hover { color: var(--text); }
+  .meta { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 7px 8px; font-size: 12.5px; }
+  .meta dt { color: var(--text-3); }
+  .meta dd { color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .actions { display: flex; flex-wrap: wrap; gap: 6px; }
+
+  /* 通用按钮 */
+  .btn {
+    flex: none;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 0 12px;
+    border-radius: var(--r-sm);
+    background: var(--field);
+    font-size: 12.5px;
+    white-space: nowrap;
+    transition: background .15s, color .15s;
+  }
+  .btn:hover { background: var(--field-hover); }
+  .btn.sq { width: 32px; padding: 0; }
+  .btn.solid { background: var(--primary); color: var(--primary-text); }
+  .btn.solid:hover { background: var(--primary-hover); }
+  .btn.danger:hover, .tbtn.danger:hover { color: var(--danger); }
+  .tbtn {
+    height: 28px;
+    padding: 0 10px;
+    border-radius: var(--r-sm);
+    font-size: 12.5px;
+    color: var(--text-2);
+    white-space: nowrap;
+    transition: background .15s, color .15s;
+  }
+  .tbtn:hover { background: var(--field-hover); color: var(--text); }
+
+  /* 图库：按原比例排成等高行 */
+  .library { margin-top: 56px; }
+  .lib-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+  .lib-title { display: flex; align-items: baseline; gap: 8px; font-size: 15px; font-weight: 600; }
+  .lib-title span { font-size: 12.5px; font-weight: 400; color: var(--text-3); }
+  .lib-tools { display: flex; align-items: center; gap: 6px; }
+  .search {
+    width: 240px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 10px;
+    border-radius: var(--r-sm);
+    background: var(--field);
+    color: var(--text-3);
+    transition: box-shadow .15s;
+  }
+  .search:focus-within { box-shadow: 0 0 0 1px var(--line-2); }
+  .search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font-size: 12.5px; }
+  .gallery-grid { --row-h: 172px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .gallery-grid::after { content: ''; flex-grow: 999999; }
+  .tile {
+    position: relative;
+    flex-grow: var(--r);
+    flex-basis: calc(var(--r) * var(--row-h));
+    aspect-ratio: var(--r);
+    overflow: hidden;
+    border-radius: var(--r-xs);
+    background: var(--field);
+    cursor: pointer;
+  }
+  .tile img { display: block; width: 100%; height: 100%; object-fit: cover; transition: transform .6s var(--ease); }
+  .tile:hover img { transform: scale(1.02); }
+  .tile.sel { outline: 1.5px solid var(--text); outline-offset: 2px; }
+  .tile-cap {
+    position: absolute;
+    inset: auto 0 0 0;
+    padding: 30px 10px 9px;
+    background: linear-gradient(transparent, rgba(0, 0, 0, .72));
+    color: #fff;
     font-size: 12px;
-    font-weight: 600;
-    color: var(--text-main);
+    line-height: 1.45;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    opacity: 0;
+    transition: opacity .2s;
+    pointer-events: none;
+  }
+  .tile-tools { position: absolute; top: 6px; right: 6px; display: flex; gap: 4px; opacity: 0; transition: opacity .2s; }
+  .tile:hover .tile-cap, .tile:hover .tile-tools, .tile:focus-within .tile-tools { opacity: 1; }
+  .tool-btn {
+    width: 26px;
+    height: 26px;
+    display: grid;
+    place-items: center;
+    border-radius: 5px;
+    background: rgba(0, 0, 0, .55);
+    color: #fff;
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+    transition: background .15s;
+  }
+  .tool-btn:hover { background: rgba(0, 0, 0, .78); }
+  .tool-btn.del:hover { background: #d93f3c; }
+  .gallery-empty { width: 100%; padding: 48px 0; text-align: center; font-size: 13px; line-height: 1.8; color: var(--text-3); }
+  .gallery-empty.error { color: var(--danger); }
+  .gallery-empty.error span { color: var(--text-3); }
+
+  /* ================= 设置页 ================= */
+  .settings { min-height: 100vh; background: var(--canvas); }
+  .cfg { max-width: 820px; margin: 0 auto; padding: 22px 40px 80px; }
+  .back {
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: -4px;
+    padding: 0 10px 0 4px;
+    border-radius: var(--r-sm);
+    font-size: 13px;
+    color: var(--text-2);
+  }
+  .back:hover { background: var(--field-hover); color: var(--text); }
+  .cfg-title { margin-top: 26px; font-size: 22px; font-weight: 600; letter-spacing: -.01em; }
+  .cfg-desc { margin-top: 6px; font-size: 13px; color: var(--text-2); }
+  .cfg-sec { margin-top: 40px; }
+  .cfg-sec-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+  .cfg-sec-title { font-size: 14px; font-weight: 600; }
+  .cfg-sec-desc { margin-top: 4px; font-size: 12.5px; color: var(--text-3); }
+  .list { overflow: hidden; border-radius: var(--r-lg); background: var(--panel); box-shadow: 0 0 0 1px var(--line); }
+  .list.pad { padding: 20px; }
+  .list > * + * { border-top: 1px solid var(--line); }
+  .list-empty { padding: 18px 16px; font-size: 13px; color: var(--text-3); }
+  .item { display: flex; align-items: center; gap: 16px; padding: 14px 12px 14px 16px; }
+  .item-main { flex: 1; min-width: 0; }
+  .item-name { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 500; }
+  .tag {
+    padding: 1px 7px;
+    border-radius: 4px;
+    background: var(--field);
+    font-size: 11.5px;
+    font-weight: 400;
+    color: var(--text-2);
+    white-space: nowrap;
+  }
+  .item-url {
+    margin-top: 3px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-3);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .dropzone-action {
-    font-size: 11px;
-    color: var(--primary);
-    margin-top: 4px;
-  }
-
-  /* 高级折叠面板 */
-  details.advanced-pane {
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    background: var(--bg-input);
-    overflow: hidden;
-    margin-top: 4px;
-  }
-  details.advanced-pane summary {
-    padding: 11px 14px;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text-muted);
+  .item-side { font-size: 12px; color: var(--text-3); white-space: nowrap; }
+  .editor { padding: 18px 20px 20px; background: var(--raised); }
+  .editor-head { margin-bottom: 16px; font-size: 13px; font-weight: 600; }
+  .form { display: grid; grid-template-columns: 88px minmax(0, 1fr); align-items: center; gap: 14px 20px; }
+  .form > label { font-size: 12.5px; color: var(--text-2); }
+  .form > .top { align-self: start; padding-top: 8px; }
+  .form .input, .form .select { height: 34px; font-size: 13px; }
+  .form .textarea { height: auto; min-height: 108px; padding: 8px 11px; font-size: 12.5px; }
+  .field-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .inline { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+  .inline .input { flex: 1; min-width: 160px; width: auto; }
+  .hint { font-size: 12px; color: var(--text-3); }
+  .hint.on { color: var(--ok); }
+  .form-acts { display: flex; align-items: center; gap: 8px; }
+  .form-acts .spacer { flex: 1; }
+  .chk-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12.5px;
+    color: var(--text-2);
+    white-space: nowrap;
     cursor: pointer;
     user-select: none;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    transition: var(--transition);
   }
-  details.advanced-pane summary:hover {
-    color: var(--text-main);
-    background: var(--bg-surface);
-  }
-  details.advanced-pane[open] summary {
-    border-bottom: 1px solid var(--border);
-    color: var(--primary);
-  }
-  .advanced-content {
-    padding: 14px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  /* 底部固定生成主按钮 */
-  /* 右侧顶部创作执行动作条 */
-  .stage-exec-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    padding: 14px 20px;
-    box-shadow: var(--shadow-sm);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    flex-wrap: wrap;
-    transition: var(--transition);
-  }
-  .stage-exec-bar:hover {
-    border-color: var(--border-hover);
-  }
-  .exec-info {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-  .exec-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 13px;
-    font-weight: 700;
-    color: var(--text-main);
-  }
-  .status-indicator-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--primary);
-    box-shadow: 0 0 8px var(--primary-glow);
-  }
-  .exec-sep {
-    color: var(--text-dim);
-  }
-  .exec-hint-text {
-    font-size: 11px;
-    color: var(--text-dim);
-  }
-  .exec-actions {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-  .btn-generate-main {
-    padding: 11px 24px;
-    border-radius: var(--radius-md);
-    background: var(--grad-primary);
-    color: #ffffff;
-    font-size: 14px;
-    font-weight: 700;
-    letter-spacing: 0.02em;
-    border: none;
-    cursor: pointer;
-    box-shadow: 0 4px 16px var(--primary-glow);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    transition: var(--transition);
-    font-family: inherit;
-    user-select: none;
-  }
-  .btn-generate-main:hover:not(:disabled) {
-    background: var(--grad-hover);
-    box-shadow: 0 6px 24px var(--primary-glow);
-    transform: translateY(-1px);
-  }
-  .btn-generate-main:active:not(:disabled) {
-    transform: translateY(1px);
-  }
-  .btn-generate-main:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-    filter: grayscale(0.2);
-  }
-  .btn-kbd-pill {
-    font-size: 11px;
-    padding: 2px 7px;
-    border-radius: 5px;
-    background: rgba(255, 255, 255, 0.22);
-    color: #fff;
-    font-family: ui-monospace, Menlo, Consolas, monospace;
-    font-weight: 600;
-  }
-  .btn-cancel {
-    width: 100%;
-    padding: 10px 16px;
-    border-radius: var(--radius-md);
-    background: var(--bg-surface);
-    color: var(--danger);
-    border: 1px solid var(--danger);
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: var(--transition);
-  }
-  .btn-cancel:hover {
-    background: var(--danger-bg);
-  }
-
-  /* ================= 右侧展示工作区 ================= */
-  .stage-container {
-    padding: 24px 30px 60px;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 28px;
-  }
-  @media (max-width: 768px) {
-    .stage-container { padding: 16px; }
-  }
-
-  /* 焦点展示台 Hero Section */
-  .hero-canvas {
-    border-radius: var(--radius-xl);
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    box-shadow: var(--shadow-md);
-    padding: 24px;
-    position: relative;
-    overflow: hidden;
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-  }
-  .hero-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 18px;
-  }
-  .hero-badge {
-    font-size: 12px;
-    font-weight: 700;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    color: var(--primary);
-  }
-
-  /* 生成过程进度看板 */
-  .progress-card {
-    border-radius: var(--radius-lg);
-    background: var(--bg-input);
-    border: 1px solid var(--border);
-    padding: 24px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-    gap: 20px;
-    animation: fadeIn 0.3s ease;
-  }
-  .progress-spinner-wrap {
-    position: relative;
-    width: 68px;
-    height: 68px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .spinner-ring {
-    position: absolute;
-    inset: 0;
-    border: 3px solid rgba(99, 102, 241, 0.15);
-    border-top-color: var(--primary);
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-  }
-  .spinner-pulse {
-    position: absolute;
-    inset: -6px;
-    border: 1px dashed var(--primary);
-    border-radius: 50%;
-    opacity: 0.4;
-    animation: pulse 2.5s infinite;
-  }
-  /* 结束态（成功/失败/中断）：转圈停止，避免"其实早已结束却仍在转"的错觉 */
-  .progress-card.finished .spinner-ring {
-    animation: none;
-    border-color: var(--border);
-  }
-  .progress-card.finished .spinner-pulse { animation: none; opacity: 0.25; }
-  .progress-card.finished .progress-spinner-wrap > svg { opacity: 0.35; }
-  .progress-card.failed .spinner-ring { border-color: var(--danger); }
-  .progress-card.failed .spinner-pulse { border-color: var(--danger); }
-  .progress-card.failed .progress-spinner-wrap > svg { color: var(--danger); }
-  .progress-card .progress-status-text { word-break: break-word; }
-  .step-stepper {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-    justify-content: center;
-    width: 100%;
-  }
-  .step-node {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 14px;
-    border-radius: 999px;
-    font-size: 12px;
-    font-weight: 600;
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    color: var(--text-dim);
-    transition: var(--transition);
-  }
-  .step-node.active {
-    border-color: var(--primary);
-    color: var(--primary);
-    background: var(--primary-light);
-    box-shadow: 0 0 12px var(--primary-glow);
-  }
-  .step-node.done {
-    border-color: var(--success);
-    color: var(--success);
-    background: var(--success-bg);
-  }
-  .step-node.error {
-    border-color: var(--danger);
-    color: var(--danger);
-    background: var(--danger-bg);
-  }
-  .progress-status-text {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text-main);
-  }
-  .progress-timer {
-    font-size: 13px;
-    color: var(--text-muted);
-    font-family: ui-monospace, Menlo, Consolas, monospace;
-  }
-
-  /* 初始空状态 */
-  .hero-empty {
-    padding: 60px 20px;
-    text-align: center;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 14px;
-    color: var(--text-muted);
-  }
-  .empty-sparkle {
-    width: 64px;
-    height: 64px;
-    border-radius: 20px;
-    background: var(--bg-input);
-    border: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--primary);
-    margin-bottom: 6px;
-    box-shadow: var(--shadow-sm);
-  }
-  .hero-empty h3 {
-    font-size: 17px;
-    color: var(--text-main);
-    font-weight: 700;
-  }
-  .hero-empty p {
-    font-size: 13px;
-    max-width: 420px;
-    line-height: 1.6;
-    color: var(--text-dim);
-  }
-
-  /* 成果 Hero 图片卡片 */
-  .hero-result {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 18px;
-  }
-  .hero-img-wrap {
-    position: relative;
-    border-radius: var(--radius-lg);
-    overflow: hidden;
-    background: #000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    max-height: 620px;
-    border: 1px solid var(--border);
-  }
-  .hero-img {
-    max-width: 100%;
-    max-height: 600px;
-    width: auto;
-    height: auto;
-    object-fit: contain;
-    cursor: zoom-in;
-    transition: transform 0.3s ease;
-  }
-  .hero-img:hover {
-    transform: scale(1.01);
-  }
-  .hero-meta-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 14px;
-    flex-wrap: wrap;
-    background: var(--bg-input);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    padding: 12px 16px;
-  }
-  .hero-prompt-txt {
-    font-size: 13px;
-    color: var(--text-main);
-    line-height: 1.5;
-    flex: 1;
-    min-width: 200px;
-    word-break: break-all;
-  }
-  .hero-actions {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-shrink: 0;
-  }
-
-  /* 通用按钮系统 */
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 16px;
-    border-radius: var(--radius-md);
-    font-size: 13px;
-    font-weight: 600;
-    border: 1px solid transparent;
-    cursor: pointer;
-    transition: var(--transition);
-    text-decoration: none;
-    font-family: inherit;
-  }
-  .btn-primary {
-    background: var(--primary);
-    color: #fff;
-    box-shadow: 0 2px 8px var(--primary-glow);
-  }
-  .btn-primary:hover {
-    background: var(--primary-hover);
-  }
-  .btn-outline {
-    background: var(--bg-surface);
-    color: var(--text-main);
-    border-color: var(--border);
-  }
-  .btn-outline:hover {
-    border-color: var(--border-hover);
-    background: var(--bg-card-hover);
-  }
-  .btn-danger {
-    background: var(--danger-bg);
-    color: var(--danger);
-    border-color: var(--danger);
-  }
-  .btn-danger:hover {
-    background: var(--danger);
-    color: #fff;
-  }
-  .btn-sm {
-    padding: 5px 12px;
-    font-size: 12px;
-    border-radius: var(--radius-sm);
-  }
-
-  /* ================= 历史图库区 ================= */
-  .gallery-section {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-  }
-  .gallery-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    flex-wrap: wrap;
-  }
-  .section-title {
-    font-size: 16px;
-    font-weight: 700;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .count-tag {
-    font-size: 11px;
-    font-weight: 600;
-    padding: 2px 8px;
-    border-radius: 999px;
-    background: var(--bg-input);
-    border: 1px solid var(--border);
-    color: var(--text-muted);
-  }
-  .gallery-filter-wrap {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .filter-input {
-    width: 220px;
-    padding: 6px 12px;
-    border-radius: var(--radius-sm);
-    font-size: 12px;
-  }
-
-  /* 图库网格 */
-  .gallery-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-    gap: 16px;
-  }
-  .gallery-item {
-    position: relative;
-    border-radius: var(--radius-lg);
-    overflow: hidden;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    box-shadow: var(--shadow-sm);
-    transition: var(--transition);
-    aspect-ratio: 1;
-    display: flex;
-    flex-direction: column;
-  }
-  .gallery-item:hover {
-    transform: translateY(-3px);
-    box-shadow: var(--shadow-md);
-    border-color: var(--border-hover);
-  }
-  .gallery-thumb {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-    cursor: zoom-in;
-    background: var(--bg-input);
-  }
-  .gallery-overlay {
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(180deg, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0.05) 50%, rgba(0,0,0,0.85) 100%);
-    opacity: 0;
-    transition: opacity 0.25s ease;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    padding: 10px;
-    pointer-events: none;
-  }
-  .gallery-item:hover .gallery-overlay {
-    opacity: 1;
-    pointer-events: auto;
-  }
-  .overlay-top {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-  .overlay-badge {
-    font-size: 10px;
-    font-weight: 600;
-    padding: 2px 7px;
-    border-radius: 999px;
-    background: rgba(0, 0, 0, 0.65);
-    color: #fff;
-    backdrop-filter: blur(8px);
-  }
-  .overlay-bottom {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-  .overlay-prompt {
-    font-size: 11px;
-    color: #fff;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-    line-height: 1.4;
-    text-shadow: 0 1px 3px rgba(0,0,0,0.8);
-  }
-  .overlay-tools {
-    display: flex;
-    gap: 6px;
-    justify-content: flex-end;
-  }
-  .tool-btn {
-    width: 28px;
-    height: 28px;
-    border-radius: var(--radius-sm);
-    background: rgba(255, 255, 255, 0.9);
-    color: #1e293b;
-    border: none;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: var(--transition);
-  }
-  .tool-btn:hover {
-    background: #fff;
-    transform: scale(1.1);
-  }
-  .tool-btn.del:hover {
-    background: #ef4444;
-    color: #fff;
-  }
-
-  /* ================= 设置与渠道管理页 ================= */
-  .config-view {
-    max-width: 1080px;
-    margin: 0 auto;
-    padding: 30px 24px 60px;
-    display: flex;
-    flex-direction: column;
-    gap: 24px;
-    width: 100%;
-  }
-  .provider-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: 16px;
-  }
-  .provider-card {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    padding: 18px;
-    box-shadow: var(--shadow-sm);
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    gap: 14px;
-    transition: var(--transition);
-  }
-  .provider-card:hover {
-    border-color: var(--border-hover);
-    box-shadow: var(--shadow-md);
-  }
-  .prov-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-  .prov-title {
-    font-size: 15px;
-    font-weight: 700;
-    color: var(--text-main);
-  }
-  .prov-url {
-    font-size: 12px;
-    color: var(--text-muted);
-    font-family: ui-monospace, Menlo, Consolas, monospace;
-    word-break: break-all;
-  }
-  .prov-models-chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 5px;
-    max-height: 80px;
-    overflow-y: auto;
-  }
-  .prov-model-badge {
-    font-size: 11px;
-    padding: 2px 8px;
-    border-radius: 6px;
-    background: var(--bg-input);
-    border: 1px solid var(--border-subtle);
-    color: var(--text-dim);
-  }
-
-  /* 拉取模型多选面板 */
-  .fetch-models-panel {
-    background: var(--bg-input);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    padding: 14px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    margin-top: 10px;
-  }
+  .chk-label input { accent-color: var(--text); cursor: pointer; }
+  .fetch-panel { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: var(--r-md); background: var(--field); }
+  .fetch-head { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+  .fetch-head .input { flex: 1; min-width: 160px; width: auto; height: 30px; }
   .fetch-model-list {
     max-height: 220px;
     overflow-y: auto;
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
     gap: 6px 12px;
   }
-  .chk-label {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 12px;
-    color: var(--text-main);
-    cursor: pointer;
-    user-select: none;
-  }
-  .chk-label input {
-    cursor: pointer;
-  }
+  .fetch-model-list .chk-label { color: var(--text); }
 
-  /* ================= 沉浸式大图灯箱 ================= */
+  /* ================= 全屏查看 ================= */
   .lightbox-modal {
     position: fixed;
     inset: 0;
     z-index: 100;
-    background: rgba(5, 8, 15, 0.92);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-    animation: fadeIn 0.2s ease;
-  }
-  .lightbox-modal.hide { display: none; }
-  .lb-img-container {
-    max-width: 90vw;
-    max-height: 78vh;
     display: flex;
     align-items: center;
     justify-content: center;
-    position: relative;
+    padding: 56px 72px 104px;
+    background: rgba(6, 6, 7, .94);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    animation: fadeIn .2s ease;
   }
-  .lb-img-container img {
-    max-width: 100%;
-    max-height: 78vh;
-    object-fit: contain;
-    border-radius: var(--radius-md);
-    box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6);
-  }
-  .lb-nav-btn {
-    position: absolute;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 44px;
-    height: 44px;
+  .lb-img-container { display: flex; max-width: 100%; max-height: 100%; }
+  .lb-img-container img { max-width: 100%; max-height: calc(100vh - 160px); object-fit: contain; border-radius: var(--r-sm); }
+  .lb-close-btn, .lb-nav-btn {
+    position: fixed;
+    display: grid;
+    place-items: center;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.15);
-    color: #fff;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: var(--transition);
-    backdrop-filter: blur(8px);
+    color: rgba(255, 255, 255, .75);
+    transition: background .15s, color .15s;
   }
-  .lb-nav-btn:hover {
-    background: rgba(255, 255, 255, 0.3);
-    transform: translateY(-50%) scale(1.1);
-  }
-  .lb-nav-btn.prev { left: 24px; }
-  .lb-nav-btn.next { right: 24px; }
+  .lb-close-btn { top: 16px; right: 16px; width: 36px; height: 36px; }
+  .lb-nav-btn { top: 50%; width: 40px; height: 40px; transform: translateY(-50%); background: rgba(255, 255, 255, .06); }
+  .lb-nav-btn.prev { left: 20px; }
+  .lb-nav-btn.next { right: 20px; }
+  .lb-close-btn:hover, .lb-nav-btn:hover { background: rgba(255, 255, 255, .14); color: #fff; }
   .lb-bottom-bar {
     position: fixed;
+    left: 50%;
     bottom: 24px;
-    background: rgba(17, 24, 39, 0.88);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: var(--radius-xl);
-    padding: 10px 20px;
+    transform: translateX(-50%);
+    width: min(860px, calc(100% - 48px));
     display: flex;
     align-items: center;
-    gap: 16px;
-    max-width: 860px;
-    width: calc(100% - 48px);
     justify-content: space-between;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    gap: 16px;
+    padding: 10px 10px 10px 16px;
+    border-radius: var(--r-lg);
+    background: rgba(28, 28, 30, .92);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, .08);
   }
-  .lb-prompt-text {
-    font-size: 13px;
-    color: #e2e8f0;
-    max-width: 480px;
+  .lb-info { min-width: 0; }
+  .lb-prompt-text { font-size: 13px; color: #e8e8e8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lb-meta { margin-top: 2px; font-size: 11.5px; color: #8c8c8c; }
+  .lb-actions { flex: none; display: flex; gap: 2px; }
+  .lb-btn {
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    padding: 0 10px;
+    border-radius: var(--r-sm);
+    font-size: 12.5px;
+    color: #d6d6d6;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    transition: background .15s, color .15s;
   }
-  .lb-actions {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-shrink: 0;
-  }
-  .lb-close-btn {
-    position: fixed;
-    top: 24px;
-    right: 24px;
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.12);
-    color: #fff;
-    border: none;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: var(--transition);
-  }
-  .lb-close-btn:hover {
-    background: rgba(255, 255, 255, 0.25);
-    transform: rotate(90deg);
-  }
+  .lb-btn:hover { background: rgba(255, 255, 255, .1); color: #fff; }
 
-  /* ================= 浮动 Toast 消息 ================= */
+  /* ================= 消息提示 ================= */
   .toast-container {
     position: fixed;
-    top: 24px;
-    right: 24px;
+    top: 20px;
+    left: 50%;
     z-index: 1000;
+    transform: translateX(-50%);
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    align-items: center;
+    gap: 8px;
     pointer-events: none;
   }
   .toast {
-    padding: 12px 18px;
-    border-radius: var(--radius-md);
-    font-size: 13px;
-    font-weight: 600;
-    color: #fff;
-    box-shadow: var(--shadow-lg);
+    max-width: min(480px, calc(100vw - 32px));
     display: flex;
     align-items: center;
     gap: 10px;
+    padding: 10px 14px;
+    border-radius: var(--r-md);
+    background: var(--raised);
+    box-shadow: var(--pop-shadow);
+    font-size: 13px;
+    line-height: 1.5;
     pointer-events: auto;
-    animation: slideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-    max-width: 380px;
+    animation: toastIn .25s var(--ease);
   }
-  .toast.info { background: #3b82f6; }
-  .toast.success { background: #10b981; }
-  .toast.error { background: #ef4444; }
-  .toast.warning { background: #f59e0b; }
+  .toast-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); }
+  .toast.success .toast-dot { background: var(--ok); }
+  .toast.warning .toast-dot { background: var(--warn); }
+  .toast.error .toast-dot { background: var(--danger); }
+  .toast.out { opacity: 0; transform: translateY(-6px); transition: opacity .25s, transform .25s; }
 
-  /* 辅助类 & 动画 */
-  .hide { display: none !important; }
+  /* ================= 动画 ================= */
   @keyframes spin { to { transform: rotate(360deg); } }
-  @keyframes pulse {
-    0%, 100% { transform: scale(1); opacity: 0.6; }
-    50% { transform: scale(1.15); opacity: 0.2; }
+  @keyframes sweep { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+  @keyframes breathe { 50% { opacity: .45; } }
+  @keyframes fadeIn { from { opacity: 0; } }
+  @keyframes popIn { from { opacity: 0; transform: translateY(-4px); } }
+  @keyframes toastIn { from { opacity: 0; transform: translateY(-8px); } }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: .01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .01ms !important;
+    }
   }
-  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-  @keyframes slideIn {
-    from { opacity: 0; transform: translateX(30px); }
-    to { opacity: 1; transform: translateX(0); }
+
+  /* ================= 窄屏 ================= */
+  @media (max-width: 960px) {
+    .app { display: block; height: auto; }
+    .panel { border-right: 0; border-bottom: 1px solid var(--line); }
+    .panel-body { overflow: visible; }
+    .panel-foot { position: sticky; bottom: 0; z-index: 20; background: var(--panel); }
+    .canvas { overflow: visible; }
+    .canvas-inner { padding: 24px 16px 56px; }
+  }
+  @media (max-width: 600px) {
+    .gallery-grid { --row-h: 112px; }
+    .lib-tools { width: 100%; }
+    .search { flex: 1; width: auto; }
+    .cfg { padding: 16px 16px 64px; }
+    .cfg-sec-head { flex-wrap: wrap; }
+    .form { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+    .form > label { margin-top: 8px; }
+    .form > .top { padding-top: 0; }
+    .item { flex-wrap: wrap; row-gap: 6px; }
+    .lightbox-modal { padding: 56px 12px 150px; }
+    .lb-bottom-bar { flex-direction: column; align-items: stretch; }
+    .lb-actions { flex-wrap: wrap; }
+    .lb-nav-btn.prev { left: 8px; }
+    .lb-nav-btn.next { right: 8px; }
   }
 </style>
 </head>
 <body>
 
-<!-- 顶部导航栏 -->
-<header class="app-header">
-  <div class="brand" onclick="showView('gen')">
-    <div class="brand-icon">
-      <!-- 艺术晶体/星光图标 -->
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path>
-      </svg>
-    </div>
-    <div>
-      <div class="brand-title">
+<!-- ================= 创作视图 ================= -->
+<div class="app" id="viewGen">
+  <aside class="panel">
+    <header class="panel-head">
+      <button class="brand" id="brandBtn" type="button">
+        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 .8Q8.9 7.1 15.2 8 8.9 8.9 8 15.2 7.1 8.9.8 8 7.1 7.1 8 .8Z" fill="currentColor"/></svg>
         Image Fantasy
-        <span class="brand-badge">Studio</span>
-      </div>
-    </div>
-  </div>
-
-  <nav class="header-tabs" id="navTabs">
-    <button class="tab-btn active" data-v="gen">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
-      创作工坊
-    </button>
-    <button class="tab-btn" data-v="config">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-      渠道设置
-    </button>
-  </nav>
-
-  <div class="header-actions">
-    <div id="svc" class="svc-badge">
-      <span class="svc-dot"></span>
-      <span id="svcTxt">连接检测中…</span>
-    </div>
-    <!-- 主题切换按钮 -->
-    <button class="icon-btn" id="themeToggle" title="切换深色/浅色主题">
-      <svg id="themeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
-      </svg>
-    </button>
-  </div>
-</header>
-
-<!-- ================= 主工作台视图 ================= -->
-<main id="viewGen" class="workbench">
-  <!-- 左侧控制面板 -->
-  <aside class="control-sidebar">
-    <!-- 模式切换 -->
-    <div class="segmented-switch" id="modeSeg">
-      <button class="seg-opt active" data-m="generate">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"></path><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path><path d="M2 2l7.586 7.586"></path><circle cx="11" cy="11" r="2"></circle></svg>
-        文生图
       </button>
-      <button class="seg-opt" data-m="edit">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
-        参考图编辑
+      <div class="head-actions">
+        <button class="icon-btn" id="themeToggle" type="button" title="切换深色 / 浅色">
+          <svg id="themeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </button>
+        <button class="icon-btn" id="openConfigBtn" type="button" title="设置">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="panel-body">
+      <!-- 模型 -->
+      <section class="sec">
+        <div class="sec-head"><span class="sec-label">模型</span></div>
+        <div class="picker" id="modelPicker">
+          <button class="picker-btn" id="pickerBtn" type="button" aria-haspopup="listbox" aria-expanded="false">
+            <span class="picker-txt">
+              <span class="picker-main" id="pickerMain">加载中…</span>
+              <span class="picker-sub" id="pickerSub"></span>
+            </span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg>
+          </button>
+          <div class="menu hide" id="modelMenu" role="listbox" aria-label="选择模型"></div>
+        </div>
+        <!-- 两个隐藏下拉框仍是渠道与模型的数据源，选择器只负责展示和写入 -->
+        <select id="selProvider" hidden></select>
+        <select id="selModel" hidden></select>
+        <p id="channelHint" class="field-hint hide"></p>
+      </section>
+
+      <!-- 提示词 -->
+      <section class="sec">
+        <div class="sec-head">
+          <label class="sec-label" for="prompt">提示词</label>
+          <div class="sec-tools">
+            <span class="count num" id="promptLen">0 字</span>
+            <button class="mini-icon" id="copyPromptBtn" type="button" title="复制提示词">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="13" height="13" x="9" y="9" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            </button>
+            <button class="mini-icon" id="clearPromptBtn" type="button" title="清空提示词">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="composer" id="composer">
+          <div class="attach hide" id="editBox">
+            <div class="att" id="imgChip" role="button" tabindex="0" title="点击更换参考图"></div>
+            <div id="maskGroup">
+              <div class="att add" id="maskChip" role="button" tabindex="0" title="可选：遮罩中透明的区域会被重绘"></div>
+            </div>
+          </div>
+          <textarea id="prompt" spellcheck="false" placeholder="描述你想要的画面，支持中英文"></textarea>
+          <div class="composer-foot">
+            <button class="tool sq" id="attachBtn" type="button" title="添加参考图（也可以把图片拖进提示词框）">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 5h6"/><path d="M19 2v6"/><path d="M21 11.5V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7.5"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/><circle cx="9" cy="9" r="2"/></svg>
+            </button>
+            <span class="vsep"></span>
+            <button class="tool" id="inspireBtn" type="button">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="3"/><path d="M8.5 8.5h.01"/><path d="M15.5 8.5h.01"/><path d="M12 12h.01"/><path d="M8.5 15.5h.01"/><path d="M15.5 15.5h.01"/></svg>
+              随机灵感
+            </button>
+            <button class="tool" id="expandBtn" type="button">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"/><path d="m14 7 3 3"/><path d="M5 6v4"/><path d="M19 14v4"/><path d="M10 2v2"/><path d="M7 8H3"/><path d="M21 16h-4"/><path d="M11 3H9"/></svg>
+              AI 扩写
+            </button>
+          </div>
+        </div>
+        <input id="imgFile" class="visually-hidden" type="file" accept="image/*" tabindex="-1" aria-hidden="true">
+        <input id="maskFile" class="visually-hidden" type="file" accept="image/*" tabindex="-1" aria-hidden="true">
+        <!-- 常用修饰词，点击追加到提示词末尾 -->
+        <div class="chips">
+          <span class="chips-label">风格</span>
+          <button class="chip" type="button" data-tag="电影级光影，丁达尔光线，35mm镜头">电影感</button>
+          <button class="chip" type="button" data-tag="新中式水墨风，飘渺意境，留白美学">水墨</button>
+          <button class="chip" type="button" data-tag="吉卜力动漫手绘风，清新明媚色彩">吉卜力</button>
+          <button class="chip" type="button" data-tag="赛博朋克风格，霓虹炫光，雨夜反光">赛博朋克</button>
+          <button class="chip" type="button" data-tag="虚幻引擎5渲染，光线追踪，高精贴图">3D 渲染</button>
+          <button class="chip" type="button" data-tag="8K超高清，极致细节，大师杰作">高细节</button>
+        </div>
+      </section>
+
+      <!-- 比例 -->
+      <section class="sec">
+        <div class="sec-head"><span class="sec-label">比例</span><span class="sec-meta num" id="ratioMeta">由模型决定</span></div>
+        <div class="ratio-grid" id="ratioGrid">
+          <button class="ratio-card active" type="button" data-v="auto"><span class="ratio-glyph"><span class="ratio-visual r-auto"></span></span><span class="ratio-name">自动</span></button>
+          <button class="ratio-card" type="button" data-v="2048x2048" data-ratio="1:1"><span class="ratio-glyph"><span class="ratio-visual r-1-1"></span></span><span class="ratio-name">1:1</span></button>
+          <button class="ratio-card" type="button" data-v="2720x1536" data-ratio="16:9"><span class="ratio-glyph"><span class="ratio-visual r-16-9"></span></span><span class="ratio-name">16:9</span></button>
+          <button class="ratio-card" type="button" data-v="1536x2720" data-ratio="9:16"><span class="ratio-glyph"><span class="ratio-visual r-9-16"></span></span><span class="ratio-name">9:16</span></button>
+          <button class="ratio-card" type="button" data-v="2496x1664" data-ratio="3:2"><span class="ratio-glyph"><span class="ratio-visual r-3-2"></span></span><span class="ratio-name">3:2</span></button>
+          <button class="ratio-card" type="button" data-v="1664x2496" data-ratio="2:3"><span class="ratio-glyph"><span class="ratio-visual r-2-3"></span></span><span class="ratio-name">2:3</span></button>
+          <button class="ratio-card" type="button" data-v="4096x4096"><span class="ratio-glyph"><span class="ratio-visual r-4k"></span></span><span class="ratio-name">4K</span></button>
+          <button class="ratio-card hide" type="button" data-v="4:3" data-ratio="4:3" data-minimax="true"><span class="ratio-glyph"><span class="ratio-visual r-4-3"></span></span><span class="ratio-name">4:3</span></button>
+          <button class="ratio-card hide" type="button" data-v="3:4" data-ratio="3:4" data-minimax="true"><span class="ratio-glyph"><span class="ratio-visual r-3-4"></span></span><span class="ratio-name">3:4</span></button>
+          <button class="ratio-card hide" type="button" data-v="21:9" data-ratio="21:9" data-minimax="true"><span class="ratio-glyph"><span class="ratio-visual r-21-9"></span></span><span class="ratio-name">21:9</span></button>
+          <button class="ratio-card" type="button" data-v="custom"><span class="ratio-glyph"><span class="ratio-visual r-custom"></span></span><span class="ratio-name">自定义</span></button>
+        </div>
+        <div id="sizeCustomWrap" class="hide">
+          <input id="p_size" class="input mono" value="2048x2048" placeholder="宽x高：32 的倍数，如 2048x1152" aria-label="自定义尺寸">
+        </div>
+        <p id="sizeHint" class="field-hint hide"></p>
+      </section>
+
+      <!-- 选项 -->
+      <section class="sec">
+        <div class="sec-head"><span class="sec-label">选项</span></div>
+        <div class="rows">
+          <div class="row">
+            <span class="row-label" id="wmLabel">添加水印</span>
+            <button class="switch" id="wmSwitch" type="button" role="switch" aria-checked="false" aria-labelledby="wmLabel"></button>
+          </div>
+          <div class="row">
+            <span class="row-label" id="peLabel" title="prompt_extend：由服务商自动改写提示词">智能润色</span>
+            <div class="seg" id="peChips" role="radiogroup" aria-labelledby="peLabel">
+              <button class="active" type="button" role="radio" aria-checked="true" data-v="default">默认</button>
+              <button type="button" role="radio" aria-checked="false" data-v="on">开</button>
+              <button type="button" role="radio" aria-checked="false" data-v="off">关</button>
+            </div>
+          </div>
+          <details class="advanced" id="advancedPane">
+            <summary>
+              <span class="row-label">高级参数</span>
+              <span class="row-meta"><span id="advMeta"></span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></span>
+            </summary>
+            <div class="advanced-content">
+              <div id="minimaxStyleGroup" class="form-row-2 hide">
+                <div class="form-group">
+                  <label class="form-label" for="p_minimax_style">画风</label>
+                  <select id="p_minimax_style" class="select">
+                    <option value="">默认画风</option>
+                    <option value="漫画">漫画</option>
+                    <option value="元气">元气</option>
+                    <option value="中世纪">中世纪</option>
+                    <option value="水彩">水彩</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="p_minimax_style_weight">画风权重</label>
+                  <input id="p_minimax_style_weight" type="number" min="0.01" max="1" step="0.05" value="0.8" class="input">
+                </div>
+              </div>
+              <div class="form-row-2">
+                <div class="form-group">
+                  <label class="form-label" for="p_format" title="output_format">图片格式</label>
+                  <select id="p_format" class="select">
+                    <option value="png" selected>PNG（推荐）</option>
+                    <option value="jpeg">JPEG</option>
+                    <option value="webp">WebP</option>
+                    <option value="">默认（不传）</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="p_resp" title="response_format">返回方式</label>
+                  <select id="p_resp" class="select">
+                    <option value="b64_json" selected>Base64（推荐）</option>
+                    <option value="url">URL（临时链接）</option>
+                    <option value="">默认（不传）</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-row-2">
+                <div class="form-group">
+                  <label class="form-label" for="p_quality" title="quality">画质</label>
+                  <select id="p_quality" class="select">
+                    <option value="">默认（不传）</option>
+                    <option value="high">高</option>
+                    <option value="medium">标准</option>
+                    <option value="low">低</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="p_style" title="style">色彩风格</label>
+                  <select id="p_style" class="select">
+                    <option value="">默认（不传）</option>
+                    <option value="vivid">生动</option>
+                    <option value="natural">自然</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-row-2">
+                <div class="form-group">
+                  <label class="form-label" for="p_background" title="background">背景</label>
+                  <select id="p_background" class="select">
+                    <option value="">默认（不传）</option>
+                    <option value="auto">自动</option>
+                    <option value="transparent">透明</option>
+                    <option value="opaque">不透明</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="p_comp" title="output_compression，仅 JPEG / WebP">压缩质量</label>
+                  <input id="p_comp" type="number" min="0" max="100" class="input" placeholder="0–100，默认 90">
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="p_extra">额外参数（JSON，原样透传）</label>
+                <textarea id="p_extra" class="input textarea mono" rows="2" placeholder='例如 {"seed": 42}'></textarea>
+              </div>
+            </div>
+          </details>
+        </div>
+      </section>
+    </div>
+
+    <footer class="panel-foot">
+      <button class="go" id="go" type="button">
+        <span class="spin go-spin" aria-hidden="true"></span>
+        <span id="goText">生成</span>
+        <kbd class="kbd-go">⌘ ↵</kbd>
       </button>
-    </div>
-
-    <!-- 供应商与模型卡片 -->
-    <div class="pane-card">
-      <div class="card-header">
-        <span class="card-title">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
-          模型与渠道
-        </span>
-        <button class="mini-btn" id="retryBtn" title="重新获取供应商列表">刷新</button>
-      </div>
-      <div class="form-row-2">
-        <div class="form-group">
-          <label class="form-label">供应商渠道</label>
-          <select id="selProvider" class="select-styled"></select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">生图模型</label>
-          <select id="selModel" class="select-styled"></select>
-        </div>
-      </div>
-      <p id="channelHint" class="hide" style="font-size:12px; color:var(--text-muted); margin-top:10px;"></p>
-    </div>
-
-    <!-- 提示词输入卡片 -->
-    <div class="pane-card">
-      <div class="card-header">
-        <span class="card-title">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"></polyline><line x1="9" y1="20" x2="15" y2="20"></line><line x1="12" y1="4" x2="12" y2="20"></line></svg>
-          提示词 Prompt
-        </span>
-        <span class="ratio-desc" id="promptLen">0 字符</span>
-      </div>
-      <div class="prompt-box">
-        <textarea id="prompt" class="textarea-styled" placeholder="描述你构想的视觉画面，支持中英文..."></textarea>
-        
-        <div class="prompt-assist-actions">
-          <button class="mini-btn dice" id="inspireBtn" title="用一句话确定主体和场景，细节可再用 AI 扩写补充">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect><circle cx="8" cy="8" r="1.5"></circle><circle cx="16" cy="16" r="1.5"></circle><circle cx="8" cy="16" r="1.5"></circle><circle cx="16" cy="8" r="1.5"></circle><circle cx="12" cy="12" r="1.5"></circle></svg>
-            随机灵感
-          </button>
-          <button class="mini-btn dice" id="expandBtn" title="基于当前提示词，补充构图、光影与画面细节">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3Z"></path></svg>
-            AI 扩写
-          </button>
-        </div>
-        <div class="prompt-toolbar">
-          <div class="quick-tools">
-            <button class="mini-btn" id="clearPromptBtn">清空</button>
-            <button class="mini-btn" id="copyPromptBtn">复制</button>
-          </div>
-          <button class="mini-btn dice" id="quickGoBtn" style="font-weight:700;" title="快速执行生图 (⌘+Enter)">⚡ 生成图像</button>
-        </div>
-
-        <!-- 常用修饰词库 -->
-        <div class="tag-cloud">
-          <span class="tag-chip" data-tag="8K超高清，极致细节，大师杰作">✨ 8K大师杰作</span>
-          <span class="tag-chip" data-tag="电影级光影，丁达尔光线，35mm镜头">🎬 电影光影</span>
-          <span class="tag-chip" data-tag="赛博朋克风格，霓虹炫光，雨夜反光">🌃 赛博朋克</span>
-          <span class="tag-chip" data-tag="新中式水墨风，飘渺意境，留白美学">🖌️ 国风水墨</span>
-          <span class="tag-chip" data-tag="吉卜力动漫手绘风，清新明媚色彩">🎨 宫崎骏二次元</span>
-          <span class="tag-chip" data-tag="虚幻引擎5渲染，光线追踪，高精贴图">🔮 3D高精度</span>
-        </div>
-      </div>
-
-      <!-- 参考图编辑折叠面板 -->
-      <div id="editBox" class="hide" style="margin-top: 14px; display: flex; flex-direction: column; gap: 10px;">
-        <div class="form-group">
-          <label class="form-label">参考原图（必填）</label>
-          <div class="dropzone" id="imgDrop">
-            <input id="imgFile" type="file" accept="image/*">
-            <div id="imgEmpty" class="dropzone-text">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-dim); margin-bottom:4px;"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
-              <div style="font-size:12px; font-weight:600;">点击或拖拽上传参考图</div>
-            </div>
-            <div id="imgThumb" class="dropzone-preview hide"></div>
-          </div>
-        </div>
-        <div class="form-group" id="maskGroup">
-          <label class="form-label">遮罩 Mask（可选，透明部分将被重绘）</label>
-          <div class="dropzone" id="maskDrop">
-            <input id="maskFile" type="file" accept="image/*">
-            <div id="maskEmpty" class="dropzone-text">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-dim); margin-bottom:4px;"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>
-              <div style="font-size:12px; font-weight:600;">点击或拖拽上传 Mask 遮罩图</div>
-            </div>
-            <div id="maskThumb" class="dropzone-preview hide"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 比例与画幅卡片 -->
-    <div class="pane-card">
-      <div class="card-header">
-        <span class="card-title">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>
-          画幅比例与尺寸
-        </span>
-      </div>
-
-      <div class="ratio-grid" id="ratioGrid">
-        <div class="ratio-card active" data-v="auto">
-          <div class="ratio-visual r-auto"></div>
-          <span class="ratio-name">自动</span>
-          <span class="ratio-desc">推荐</span>
-        </div>
-        <div class="ratio-card" data-v="2048x2048" data-ratio="1:1">
-          <div class="ratio-visual r-1-1"></div>
-          <span class="ratio-name">1:1 方形</span>
-          <span class="ratio-desc">2048²</span>
-        </div>
-        <div class="ratio-card" data-v="2720x1536" data-ratio="16:9">
-          <div class="ratio-visual r-16-9"></div>
-          <span class="ratio-name">16:9 宽屏</span>
-          <span class="ratio-desc">横版壁纸</span>
-        </div>
-        <div class="ratio-card" data-v="1536x2720" data-ratio="9:16">
-          <div class="ratio-visual r-9-16"></div>
-          <span class="ratio-name">9:16 竖屏</span>
-          <span class="ratio-desc">手机壁纸</span>
-        </div>
-        <div class="ratio-card" data-v="2496x1664" data-ratio="3:2">
-          <div class="ratio-visual r-3-2"></div>
-          <span class="ratio-name">3:2 经典</span>
-          <span class="ratio-desc">微单画幅</span>
-        </div>
-        <div class="ratio-card" data-v="1664x2496" data-ratio="2:3">
-          <div class="ratio-visual r-2-3"></div>
-          <span class="ratio-name">2:3 人像</span>
-          <span class="ratio-desc">海报写真</span>
-        </div>
-        <div class="ratio-card" data-v="4096x4096">
-          <div class="ratio-visual r-4k"></div>
-          <span class="ratio-name">4K 超清</span>
-          <span class="ratio-desc">4096²</span>
-        </div>
-        <div class="ratio-card hide" data-v="4:3" data-ratio="4:3" data-minimax="true">
-          <div class="ratio-visual r-3-2"></div>
-          <span class="ratio-name">4:3 横幅</span>
-          <span class="ratio-desc">1152×864</span>
-        </div>
-        <div class="ratio-card hide" data-v="3:4" data-ratio="3:4" data-minimax="true">
-          <div class="ratio-visual r-2-3"></div>
-          <span class="ratio-name">3:4 竖幅</span>
-          <span class="ratio-desc">864×1152</span>
-        </div>
-        <div class="ratio-card hide" data-v="21:9" data-ratio="21:9" data-minimax="true">
-          <div class="ratio-visual r-16-9"></div>
-          <span class="ratio-name">21:9 超宽</span>
-          <span class="ratio-desc">1344×576</span>
-        </div>
-        <div class="ratio-card" data-v="custom">
-          <div class="ratio-visual r-custom"></div>
-          <span class="ratio-name">自定义</span>
-          <span class="ratio-desc">输入尺寸</span>
-        </div>
-      </div>
-
-      <div id="sizeCustomWrap" class="hide" style="margin-top: 10px;">
-        <input id="p_size" class="input-styled" value="2048x2048" placeholder="宽x高：32 的倍数，如 2048x1152">
-      </div>
-      <p id="sizeHint" class="hide" style="font-size:12px; color:var(--text-muted); margin-top:10px;"></p>
-    </div>
-
-    <!-- 生成偏好选项 -->
-    <div class="pane-card">
-      <div class="card-header">
-        <span class="card-title">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
-          生成偏好
-        </span>
-      </div>
-      
-      <div class="form-row-2" style="margin-bottom: 12px;">
-        <div class="form-group">
-          <label class="form-label">
-            <span>去除水印</span>
-            <span class="lbl-sub">watermark</span>
-          </label>
-          <div class="seg-control" id="wmChips">
-            <button class="seg-btn pill-btn active" data-v="off">无水印</button>
-            <button class="seg-btn pill-btn" data-v="on">官方水印</button>
-          </div>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label">
-            <span>智能润色</span>
-            <span class="lbl-sub">extend</span>
-          </label>
-          <div class="seg-control" id="peChips">
-            <button class="seg-btn pill-btn active" data-v="default">默认</button>
-            <button class="seg-btn pill-btn" data-v="on">开启</button>
-            <button class="seg-btn pill-btn" data-v="off">关闭</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- 高级参数抽屉 -->
-      <details class="advanced-pane">
-        <summary>
-          <span>高级参数设置 (可选)</span>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-        </summary>
-        <div class="advanced-content">
-          <div id="minimaxStyleGroup" class="form-row-2 hide">
-            <div class="form-group">
-              <label class="form-label">MiniMax 画风</label>
-              <select id="p_minimax_style" class="select-styled">
-                <option value="">默认画风</option>
-                <option value="漫画">漫画</option>
-                <option value="元气">元气</option>
-                <option value="中世纪">中世纪</option>
-                <option value="水彩">水彩</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">画风权重</label>
-              <input id="p_minimax_style_weight" type="number" min="0.01" max="1" step="0.05" value="0.8" class="input-styled">
-            </div>
-          </div>
-          <!-- 第1行: 图片格式 & 返回方式 -->
-          <div class="form-row-2">
-            <div class="form-group">
-              <label class="form-label">
-                <span>图片格式</span>
-                <span class="lbl-sub">format</span>
-              </label>
-              <select id="p_format" class="select-styled">
-                <option value="png" selected>PNG (推荐无损)</option>
-                <option value="jpeg">JPEG</option>
-                <option value="webp">WebP</option>
-                <option value="">默认 (不传)</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">
-                <span>返回方式</span>
-                <span class="lbl-sub">response</span>
-              </label>
-              <select id="p_resp" class="select-styled">
-                <option value="b64_json" selected>Base64 (直出更稳)</option>
-                <option value="url">URL (临时外链)</option>
-                <option value="">默认 (不传)</option>
-              </select>
-            </div>
-          </div>
-
-          <!-- 第2行: 渲染画质 & 画面风格 -->
-          <div class="form-row-2">
-            <div class="form-group">
-              <label class="form-label">
-                <span>渲染画质</span>
-                <span class="lbl-sub">quality</span>
-              </label>
-              <select id="p_quality" class="select-styled">
-                <option value="">默认 (不传)</option>
-                <option value="high">高画质 (high)</option>
-                <option value="medium">标准 (medium)</option>
-                <option value="low">低画质 (low)</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">
-                <span>画面风格</span>
-                <span class="lbl-sub">style</span>
-              </label>
-              <select id="p_style" class="select-styled">
-                <option value="">默认 (不传)</option>
-                <option value="vivid">生动色彩 (vivid)</option>
-                <option value="natural">自然写实 (natural)</option>
-              </select>
-            </div>
-          </div>
-
-          <!-- 第3行: 背景模式 & 压缩质量 -->
-          <div class="form-row-2">
-            <div class="form-group">
-              <label class="form-label">
-                <span>背景模式</span>
-                <span class="lbl-sub">background</span>
-              </label>
-              <select id="p_background" class="select-styled">
-                <option value="">默认 (不传)</option>
-                <option value="auto">自动 (auto)</option>
-                <option value="transparent">透明背景 (transparent)</option>
-                <option value="opaque">不透明 (opaque)</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">
-                <span>压缩质量</span>
-                <span class="lbl-sub">JPEG/WebP</span>
-              </label>
-              <input id="p_comp" type="number" min="0" max="100" class="input-styled" placeholder="0~100 (默认 90)">
-            </div>
-          </div>
-
-          <!-- 第4行: 额外透传参数 -->
-          <div class="form-group">
-            <label class="form-label">
-              <span>额外透传参数</span>
-              <span class="lbl-sub">JSON 原样注入</span>
-            </label>
-            <textarea id="p_extra" class="textarea-styled" style="min-height:52px;" placeholder='例如：{ "seed": 42 }'></textarea>
-          </div>
-        </div>
-      </details>
-    </div>
+    </footer>
   </aside>
 
-  <!-- 右侧展示工作区 -->
-  <section class="stage-container">
-    <!-- 顶部主执行动作条 -->
-    <div class="stage-exec-bar">
-      <div class="exec-info">
-        <div class="exec-badge">
-          <span class="status-indicator-dot"></span>
-          <span id="execModelBadge">选择模型</span>
-          <span class="exec-sep">·</span>
-          <span id="execRatioBadge">自动尺寸</span>
-        </div>
-        <div class="exec-hint-text">配置完毕后随时点击右侧执行生图，支持 ⌘+Enter 快捷键</div>
-      </div>
-      <div class="exec-actions">
-        <button class="btn-cancel hide" id="cancelBtn">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
-          取消等待
-        </button>
-        <button class="btn-generate-main" id="go">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path>
-          </svg>
-          <span id="goText">立即生成图像</span>
-          <span class="btn-kbd-pill">⌘ ↵</span>
-        </button>
-      </div>
-    </div>
+  <main class="canvas" id="canvas">
+    <div class="canvas-inner">
+      <div id="svc" class="svc-banner hide" role="status"><span class="svc-dot"></span><span id="svcTxt"></span></div>
 
-    <!-- 焦点生成展示台 -->
-    <div class="hero-canvas" id="heroCanvas">
-      <div class="hero-header">
-        <span class="hero-badge">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polygon points="10 8 16 12 10 16 10 8"></polygon></svg>
-          <span id="heroBadgeText">最新创作</span>
-        </span>
-        <div id="heroExtraInfo" style="font-size:12px; color:var(--text-dim);"></div>
-      </div>
-
-      <!-- 状态 A: 初始空闲引导 -->
-      <div class="hero-empty" id="heroEmpty">
-        <div class="empty-sparkle">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path>
-          </svg>
-        </div>
-        <h3>准备开启你的视觉想象</h3>
-        <p>在左侧选择你喜爱的生图模型，输入提示词或点击「随机灵感」，然后按下 ⌘ + Enter 唤醒 AI 的无限创造力。</p>
-      </div>
-
-      <!-- 状态 B: 正在生成进度条 -->
-      <div class="progress-card hide" id="progressCard">
-        <div class="progress-spinner-wrap">
-          <div class="spinner-ring"></div>
-          <div class="spinner-pulse"></div>
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--primary);"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg>
-        </div>
-
-        <div class="step-stepper" id="steps">
-          <div class="step-node" data-s="1">
-            <span>1</span>
-            <span>提交请求</span>
+      <section class="stage" id="stage">
+        <!-- 空状态 -->
+        <div class="stage-view hide" id="heroEmpty">
+          <div class="figure" data-r="1.5">
+            <div class="empty-frame">
+              <svg width="20" height="20" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 .8Q8.9 7.1 15.2 8 8.9 8.9 8 15.2 7.1 8.9.8 8 7.1 7.1 8 .8Z" fill="currentColor"/></svg>
+            </div>
           </div>
-          <div class="step-node" data-s="2">
-            <span>2</span>
-            <span>神经网络渲染</span>
-          </div>
-          <div class="step-node" data-s="3">
-            <span>3</span>
-            <span>持久化落盘</span>
+          <div class="stage-info">
+            <div>
+              <h2 class="info-title">还没有作品</h2>
+              <p class="info-text">写一句画面描述，或点「随机灵感」获取构思，然后按 <kbd class="kbd-go">⌘ ↵</kbd> 生成。</p>
+            </div>
           </div>
         </div>
 
-        <div>
-          <div class="progress-status-text" id="stText">正在建立连接…</div>
-          <div class="progress-timer" id="stTimer">已等待 0 秒</div>
+        <!-- 生成中：按目标比例占位 -->
+        <div class="stage-view progress-card hide" id="progressCard">
+          <div class="figure" id="progressFigure" data-r="1">
+            <div class="ph"><span class="ph-txt num" id="phText"></span></div>
+          </div>
+          <div class="stage-info">
+            <div>
+              <h2 class="info-title" id="progressTitle">正在生成</h2>
+              <p class="progress-sub" id="progressSub"></p>
+            </div>
+            <div class="step-list" id="steps">
+              <div class="step-node" data-s="1"><span class="step-mark"></span>提交请求</div>
+              <div class="step-node" data-s="2"><span class="step-mark"></span>模型生成</div>
+              <div class="step-node" data-s="3"><span class="step-mark"></span>保存到图库</div>
+            </div>
+            <div class="progress-msg">
+              <p class="progress-status-text" id="stText"></p>
+              <p class="progress-timer num" id="stTimer"></p>
+            </div>
+            <div class="actions">
+              <button class="btn hide" id="cancelBtn" type="button">取消</button>
+              <button class="btn hide" id="progressCloseBtn" type="button">关闭</button>
+            </div>
+          </div>
         </div>
-      </div>
 
-      <!-- 状态 C: 生成成功成果卡片 -->
-      <div class="hero-result hide" id="heroResult">
-        <div class="hero-img-wrap">
-          <img id="heroImg" class="hero-img" src="" alt="生成结果" title="点击放大预览">
+        <!-- 作品详情 -->
+        <div class="stage-view hide" id="heroResult">
+          <div class="figure" id="heroFigure" data-r="1">
+            <img id="heroImg" alt="生成结果" title="点击全屏查看">
+          </div>
+          <div class="stage-info">
+            <div class="blk">
+              <div class="blk-head">
+                <span class="lbl">提示词</span>
+                <button class="mini-icon" id="heroCopyBtn" type="button" title="复制提示词">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="13" height="13" x="9" y="9" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+              </div>
+              <p class="prompt-full" id="heroPrompt"></p>
+              <button class="more hide" id="heroMore" type="button">展开全文</button>
+            </div>
+            <dl class="meta num" id="heroMeta"></dl>
+            <div class="actions">
+              <button class="btn" id="heroReuseBtn" type="button" title="把这张作品的提示词填回输入框">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 20v-7a4 4 0 0 0-4-4H4"/><path d="M9 14 4 9l5-5"/></svg>
+                复用提示词
+              </button>
+              <a class="btn" id="heroDl" href="#" download>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>
+                下载
+              </a>
+              <button class="btn sq" id="heroZoomBtn" type="button" title="全屏查看">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="m21 3-7 7"/><path d="m3 21 7-7"/></svg>
+              </button>
+              <button class="btn sq danger" id="heroDelBtn" type="button" title="删除这张作品">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              </button>
+            </div>
+          </div>
         </div>
-        <div class="hero-meta-bar">
-          <div class="hero-prompt-txt" id="heroPrompt"></div>
-          <div class="hero-actions">
-            <button class="btn btn-outline btn-sm" id="heroReuseBtn" title="将此图的提示词填回工作台">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 4v6h6"></path><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
-              复用提示词
+      </section>
+
+      <!-- 图库 -->
+      <section class="library">
+        <header class="lib-head">
+          <h2 class="lib-title">图库 <span class="num" id="gcount"></span></h2>
+          <div class="lib-tools">
+            <label class="search">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+              <input type="text" id="gFilter" placeholder="搜索提示词或模型" aria-label="搜索图库">
+            </label>
+            <button class="icon-btn" id="refreshGalleryBtn" type="button" title="刷新图库">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
             </button>
-            <a class="btn btn-primary btn-sm" id="heroDl" href="#" download>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-              保存高清原图
-            </a>
+          </div>
+        </header>
+        <div class="gallery-grid" id="gallery"></div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<!-- ================= 设置视图 ================= -->
+<section id="viewConfig" class="settings hide">
+  <div class="cfg">
+    <button class="back" id="backToGen" type="button">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+      返回创作
+    </button>
+    <h1 class="cfg-title">设置</h1>
+    <p class="cfg-desc">管理图像渠道与灵感模型，配置保存在本地服务端。</p>
+
+    <section class="cfg-sec">
+      <div class="cfg-sec-head">
+        <div>
+          <h2 class="cfg-sec-title">图像渠道</h2>
+          <p class="cfg-sec-desc">支持 OpenAI 兼容接口与 MiniMax 原生接口。</p>
+        </div>
+        <button class="btn" id="addProvBtn" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+          添加渠道
+        </button>
+      </div>
+      <div class="list" id="provList"></div>
+    </section>
+
+    <!-- 渠道编辑器：编辑时插到对应行下方，新增时放在列表末尾 -->
+    <div class="editor hide" id="provFormCard">
+      <div class="editor-head" id="formTitle">添加渠道</div>
+      <div class="form">
+        <label for="pv_type">接口类型</label>
+        <div class="field-col">
+          <select id="pv_type" class="select">
+            <option value="openai">OpenAI 兼容</option>
+            <option value="minimax">MiniMax 原生</option>
+          </select>
+          <p id="pv_type_hint" class="hint">适用于 OpenAI 兼容的图片接口与代理渠道。</p>
+        </div>
+        <label for="pv_name">名称</label>
+        <input id="pv_name" class="input" placeholder="如 TokenRhythm / Vtry">
+        <label for="pv_base" id="pv_base_label">接口地址</label>
+        <input id="pv_base" class="input mono" placeholder="https://api.example.com/v1">
+        <label for="pv_key">API Key</label>
+        <div class="inline">
+          <input id="pv_key" type="password" class="input mono" placeholder="sk-..." autocomplete="off">
+          <label class="chk-label"><input type="checkbox" id="pv_showkey">显示</label>
+        </div>
+        <label for="pv_models" class="top">模型</label>
+        <div class="field-col">
+          <textarea id="pv_models" class="input textarea mono" placeholder="gpt-image-2&#10;qwen-image-3.0&#10;sensenova-u1.5-lite"></textarea>
+          <div class="inline">
+            <button class="btn" id="pv_fetch" type="button">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>
+              <span id="pv_fetch_text">从接口获取</span>
+            </button>
+            <span class="hint">每行一个模型名</span>
+          </div>
+          <!-- 从接口拉取模型后的勾选面板 -->
+          <div id="fetchPanel" class="fetch-panel hide">
+            <div class="fetch-head">
+              <input id="fv_filter" class="input" placeholder="过滤模型名称" aria-label="过滤模型名称">
+              <button class="tbtn" id="fv_all" type="button">全选</button>
+              <button class="tbtn" id="fv_none" type="button">全不选</button>
+              <span class="hint num" id="fv_count">已选 0 / 0</span>
+            </div>
+            <div id="fv_list" class="fetch-model-list"></div>
+            <div class="form-acts">
+              <span class="spacer"></span>
+              <button class="btn" id="fv_close" type="button">取消</button>
+              <button class="btn solid" id="fv_apply" type="button">应用所选模型</button>
+            </div>
+          </div>
+        </div>
+        <span></span>
+        <div class="form-acts">
+          <button class="btn solid" id="pv_save" type="button">保存渠道</button>
+          <button class="btn" id="pv_cancel" type="button">取消</button>
+          <span class="spacer"></span>
+          <button class="tbtn danger hide" id="pv_delete" type="button">删除渠道</button>
+        </div>
+      </div>
+    </div>
+
+    <section class="cfg-sec">
+      <div class="cfg-sec-head">
+        <div>
+          <h2 class="cfg-sec-title">灵感模型</h2>
+          <p class="cfg-sec-desc">用于「随机灵感」和「AI 扩写」。未配置时，随机灵感使用内置短句，AI 扩写不可用。</p>
+        </div>
+        <span class="hint" id="inspire_cfg_hint"></span>
+      </div>
+      <div class="list pad">
+        <div class="form">
+          <label for="cfg_inspire_prov">渠道</label>
+          <select id="cfg_inspire_prov" class="select"></select>
+          <label for="cfg_inspire_model">模型</label>
+          <input id="cfg_inspire_model" class="input mono" placeholder="如 gpt-4o-mini / deepseek-chat / qwen-plus">
+          <span></span>
+          <div class="form-acts">
+            <button class="btn solid" id="btn_save_inspire_cfg" type="button">保存</button>
+            <button class="btn" id="btn_clear_inspire_cfg" type="button">清除</button>
           </div>
         </div>
       </div>
-    </div>
-
-    <!-- 历史画廊区 -->
-    <div class="gallery-section">
-      <div class="gallery-header">
-        <div class="section-title">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
-          历史资产画廊
-          <span class="count-tag" id="gcount">0 张</span>
-        </div>
-        <div class="gallery-filter-wrap">
-          <input type="text" id="gFilter" class="input-styled filter-input" placeholder="按提示词检索...">
-          <button class="mini-btn" id="refreshGalleryBtn" title="刷新图库">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
-          </button>
-        </div>
-      </div>
-
-      <div class="gallery-grid" id="gallery"></div>
-    </div>
-  </section>
-</main>
-
-<!-- ================= 渠道与设置视图 ================= -->
-<section id="viewConfig" class="config-view hide">
-  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
-    <div>
-      <h2 style="font-size:20px; font-weight:700;">模型与供应商配置</h2>
-      <p style="font-size:13px; color:var(--text-muted); margin-top:2px;">管理 OpenAI 兼容与 MiniMax 原生图像渠道，配置保存在本地服务端。</p>
-    </div>
-    <button class="btn btn-outline" onclick="showView('gen')">返回创作工坊</button>
-  </div>
-
-  <div class="provider-grid" id="provGrid"></div>
-
-  <!-- 供应商新增/编辑表单 -->
-  <div class="pane-card" id="provFormCard" style="margin-top: 10px;">
-    <div class="card-header">
-      <span class="card-title" id="formTitle">添加新供应商渠道</span>
-      <span style="font-size:12px; color:var(--text-dim);" id="pv_state"></span>
-    </div>
-
-    <div class="form-group" style="margin-bottom:14px;">
-      <label class="form-label">接口类型</label>
-      <select id="pv_type" class="select-styled">
-        <option value="openai">OpenAI 兼容</option>
-        <option value="minimax">MiniMax 原生</option>
-      </select>
-      <p id="pv_type_hint" style="font-size:12px; color:var(--text-muted); margin-top:6px;">适用于 OpenAI 兼容的图片接口与代理渠道。</p>
-    </div>
-
-    <div class="form-row-3">
-      <div class="form-group">
-        <label class="form-label">供应商渠道别名</label>
-        <input id="pv_name" class="input-styled" placeholder="如 TokenRhythm / Vtry">
-      </div>
-      <div class="form-group">
-        <label class="form-label" id="pv_base_label">Base URL (以 /v1 结尾)</label>
-        <input id="pv_base" class="input-styled" placeholder="https://api.example.com/v1">
-      </div>
-      <div class="form-group">
-        <label class="form-label">
-          <span>API Key</span>
-          <label class="chk-label" style="font-size:11px; color:var(--text-dim);"><input type="checkbox" id="pv_showkey"> 明文显示</label>
-        </label>
-        <input id="pv_key" type="password" class="input-styled" placeholder="sk-...">
-      </div>
-    </div>
-
-    <div class="form-group" style="margin-top:14px;">
-      <label class="form-label">支持的模型列表 (每行一个)</label>
-      <textarea id="pv_models" class="textarea-styled" style="min-height:90px;" placeholder="gpt-image-2&#10;qwen-image-3.0&#10;sensenova-u1.5-lite"></textarea>
-    </div>
-
-    <!-- 从接口拉取模型的展开面板 -->
-    <div id="fetchPanel" class="fetch-models-panel hide">
-      <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
-        <input id="fv_filter" class="input-styled" placeholder="过滤模型名称…" style="flex:1; min-width:180px;">
-        <div style="display:flex; gap:6px;">
-          <button class="mini-btn" id="fv_all">全选</button>
-          <button class="mini-btn" id="fv_none">全不选</button>
-        </div>
-        <span style="font-size:12px; color:var(--text-dim);" id="fv_count">已选 0 / 0</span>
-      </div>
-      <div id="fv_list" class="fetch-model-list"></div>
-      <div style="display:flex; gap:8px; justify-content:flex-end;">
-        <button class="btn btn-outline btn-sm" id="fv_close">取消</button>
-        <button class="btn btn-primary btn-sm" id="fv_apply">应用选中模型</button>
-      </div>
-    </div>
-
-    <div style="display:flex; gap:10px; margin-top:16px; align-items:center; flex-wrap:wrap;">
-      <button class="btn btn-primary" id="pv_save">保存供应商渠道</button>
-      <button class="btn btn-outline" id="pv_fetch">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-        <span id="pv_fetch_text">从接口自动拉取模型列表</span>
-      </button>
-      <button class="btn btn-outline hide" id="pv_cancel">取消编辑</button>
-    </div>
-  </div>
-
-  <!-- AI 灵感提示词大模型配置卡片 -->
-  <div class="pane-card" style="margin-top: 14px;">
-    <div class="card-header">
-      <span class="card-title">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
-        AI 灵感大模型配置 (可选)
-      </span>
-      <span style="font-size:12px; color:var(--text-dim);" id="inspire_cfg_hint">未配置（使用本地预置词库）</span>
-    </div>
-    
-    <div class="form-row-2">
-      <div class="form-group">
-        <label class="form-label">
-          <span>大语言模型渠道</span>
-          <span class="lbl-sub">provider</span>
-        </label>
-        <select id="cfg_inspire_prov" class="select-styled"></select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">
-          <span>文本模型名称</span>
-          <span class="lbl-sub">model (留空使用内置词库)</span>
-        </label>
-        <input id="cfg_inspire_model" class="input-styled" placeholder="如 gpt-4o-mini / deepseek-chat / qwen-plus">
-      </div>
-    </div>
-    <div style="font-size:12px; color:var(--text-dim); margin-top:10px; line-height:1.6;">
-      💡 <b>随机灵感：</b>用约 20～40 字的一句话确定主体和场景；未配置模型时使用本地简短灵感。<br>
-      <b>AI 扩写：</b>配置文本模型后，手动点击即可基于当前提示词补充细节。可以先随机、再修改，最后按需扩写。
-    </div>
-    <div style="margin-top:14px; display:flex; justify-content:flex-end; gap:8px;">
-      <button class="btn btn-outline btn-sm" id="btn_clear_inspire_cfg">清除配置 (还原预置)</button>
-      <button class="btn btn-primary btn-sm" id="btn_save_inspire_cfg">保存灵感大模型设置</button>
-    </div>
+    </section>
   </div>
 </section>
 
-<!-- ================= 沉浸式大图灯箱 ================= -->
-<div id="lb" class="lightbox-modal hide" onclick="if(event.target===this)closeLB()">
-  <button class="lb-close-btn" id="lbX" title="按 Esc 键退出">
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+<!-- ================= 全屏查看 ================= -->
+<div id="lb" class="lightbox-modal hide">
+  <button class="lb-close-btn" id="lbX" type="button" title="关闭（Esc）">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
   </button>
-
-  <button class="lb-nav-btn prev" id="lbPrev" title="上一张 (← 方向键)">
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+  <button class="lb-nav-btn prev" id="lbPrev" type="button" title="上一张（←）">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
   </button>
-  <button class="lb-nav-btn next" id="lbNext" title="下一张 (→ 方向键)">
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+  <button class="lb-nav-btn next" id="lbNext" type="button" title="下一张（→）">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
   </button>
-
-  <div class="lb-img-container">
-    <img id="lbImg" alt="">
-  </div>
-
+  <div class="lb-img-container"><img id="lbImg" alt=""></div>
   <div class="lb-bottom-bar">
-    <div style="overflow:hidden;">
-      <div class="lb-prompt-text" id="lbPrompt" title=""></div>
-      <div style="font-size:11px; color:var(--text-dim); margin-top:2px;" id="lbMeta"></div>
+    <div class="lb-info">
+      <div class="lb-prompt-text" id="lbPrompt"></div>
+      <div class="lb-meta num" id="lbMeta"></div>
     </div>
     <div class="lb-actions">
-      <button class="btn btn-outline btn-sm" id="lbCopyBtn">复制提示词</button>
-      <button class="btn btn-outline btn-sm" id="lbReuseBtn">填入表单</button>
-      <a class="btn btn-primary btn-sm" id="lbDl" href="#" download>下载大图</a>
-      <a class="btn btn-outline btn-sm" id="lbOpen" href="#" target="_blank" rel="noopener">在新标签页打开</a>
+      <button class="lb-btn" id="lbCopyBtn" type="button">复制提示词</button>
+      <button class="lb-btn" id="lbReuseBtn" type="button">复用提示词</button>
+      <a class="lb-btn" id="lbDl" href="#" download>下载</a>
+      <a class="lb-btn" id="lbOpen" href="#" target="_blank" rel="noopener">新标签页打开</a>
     </div>
   </div>
 </div>
 
-<!-- 浮动 Toast 消息通知容器 -->
 <div class="toast-container" id="toastBox"></div>
 
 <script>
@@ -2169,7 +1451,7 @@ async function copyText(text, okMsg){
   }
 }
 
-let mode = 'generate';
+let mode = 'generate';   // 由是否添加了参考图决定，见 renderAttachments
 let sizeVal = 'auto';
 let wmVal = false;
 let peVal = 'default';
@@ -2181,6 +1463,8 @@ let curLightboxIdx = -1;
 // 画廊当前实际渲染出来的顺序（过滤后 + 倒序，最新在前）。
 // 灯箱的左右翻页必须走这个列表，否则网格顺序与翻页方向相反。
 let visibleList = [];
+// 舞台上正在展示的作品；取消生成或关闭失败信息后据此恢复
+let stageItem = null;
 let editingId = null;
 let wantSel = { provider: '', model: '' };
 let fetchedModels = [];
@@ -2194,15 +1478,29 @@ const MINIMAX_SIZES = {
   '1:1': '1024×1024', '16:9': '1280×720', '4:3': '1152×864', '3:2': '1248×832',
   '2:3': '832×1248', '3:4': '864×1152', '9:16': '720×1280', '21:9': '1344×576'
 };
+const KBD_GO = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘ ↵' : 'Ctrl ↵';
+
+const svgIcon = (body, size = 14) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
+const ICON = {
+  check: svgIcon('<path d="M20 6 9 17l-5-5"/>'),
+  plus: svgIcon('<path d="M12 5v14"/><path d="M5 12h14"/>', 12),
+  x: svgIcon('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>', 12),
+  expand: svgIcon('<path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="m21 3-7 7"/><path d="m3 21 7-7"/>'),
+  download: svgIcon('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>'),
+  trash: svgIcon('<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>')
+};
 
 function isMiniMax(){
   return providers.some(p => p.id === $('selProvider').value && p.api_type === 'minimax');
+}
+function apiTypeName(p){
+  return p && p.api_type === 'minimax' ? 'MiniMax 原生' : 'OpenAI 兼容';
 }
 
 function updateChannelUI(){
   const mini = isMiniMax(), live = mini && $('selModel').value === 'image-01-live';
   $('channelHint').classList.toggle('hide', !mini);
-  $('channelHint').textContent = 'MiniMax 原生 · 支持文生图及单人人物参考；参考图须为 PNG / JPEG，且小于 10 MB。';
+  $('channelHint').textContent = '支持文生图和单人人物参考；参考图须为 PNG / JPEG，且小于 10 MB。';
   $('maskGroup').classList.toggle('hide', mini);
   $('imgFile').accept = mini ? 'image/png,image/jpeg' : 'image/*';
   ['p_format', 'p_quality', 'p_style', 'p_background', 'p_comp'].forEach(id => {
@@ -2217,13 +1515,10 @@ function updateChannelUI(){
   $('minimaxStyleGroup').classList.toggle('hide', !live);
   $('sizeHint').classList.toggle('hide', !mini);
   $('sizeHint').textContent = live
-    ? 'image-01-live 使用预设画幅；自动为 1024×1024。'
-    : 'MiniMax 预设画幅按所示尺寸生成；自定义宽高为 512～2048，且须为 8 的倍数。';
+    ? 'image-01-live 使用预设画幅；自动为 1024 × 1024。'
+    : 'MiniMax 按所选画幅的预设尺寸生成；自定义宽高须为 512～2048，且为 8 的倍数。';
   $('p_size').placeholder = mini ? '宽x高：8 的倍数，如 1024x1024' : '宽x高：32 的倍数，如 2048x1152';
   document.querySelectorAll('#ratioGrid .ratio-card').forEach(card => {
-    const desc = card.querySelector('.ratio-desc');
-    if(!card.dataset.originalDesc) card.dataset.originalDesc = desc.textContent;
-    desc.textContent = mini && card.dataset.ratio ? MINIMAX_SIZES[card.dataset.ratio] : card.dataset.originalDesc;
     const unavailable = (card.dataset.minimax && !mini)
       || (mini && card.dataset.v === '4096x4096')
       || (live && ['custom', '21:9'].includes(card.dataset.v));
@@ -2231,7 +1526,8 @@ function updateChannelUI(){
     if(unavailable && card.classList.contains('active')) selectRatio('auto');
   });
   updatePromptStats();
-  updateExecBadge();
+  updateAdvancedMeta();
+  updateSelectionUI();
 }
 
 // 简短的画面主轴；具体视觉细节由 AI 扩写补充。
@@ -2246,78 +1542,151 @@ const INSPIRATIONS = [
   "一只小水獭驾驶纸飞机，第一次飞过屋顶上的空中花园。"
 ];
 
-/* ================= Toast 通知系统 ================= */
+/* ================= 消息提示 ================= */
 function showToast(msg, type = 'info'){
-  const box = $('toastBox');
   const t = document.createElement('div');
   t.className = 'toast ' + type;
-  t.innerHTML = `<span>${esc(msg)}</span>`;
-  box.appendChild(t);
+  t.setAttribute('role', type === 'error' ? 'alert' : 'status');
+  t.innerHTML = `<span class="toast-dot"></span><span>${esc(msg)}</span>`;
+  $('toastBox').appendChild(t);
   setTimeout(() => {
-    t.style.opacity = '0';
-    t.style.transform = 'translateY(-10px)';
-    t.style.transition = 'all 0.3s ease';
-    setTimeout(() => t.remove(), 300);
-  }, 3200);
+    t.classList.add('out');
+    setTimeout(() => t.remove(), 260);
+  }, type === 'error' ? 5200 : 3200);
 }
 
-/* ================= 主题切换系统 ================= */
+/* ================= 主题 ================= */
+const THEME_ICON = {
+  dark: '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>',
+  light: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>'
+};
 function initTheme(){
-  const saved = localStorage.getItem('image-fantasy-theme') || 'dark';
-  applyTheme(saved);
+  let saved = 'dark';
+  try{ saved = localStorage.getItem('image-fantasy-theme') || 'dark'; }catch(_){}
+  applyTheme(saved === 'light' ? 'light' : 'dark');
 }
 function applyTheme(th){
   document.documentElement.setAttribute('data-theme', th);
-  localStorage.setItem('image-fantasy-theme', th);
-  const icon = $('themeIcon');
-  if(th === 'dark'){
-    icon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>';
-  } else {
-    icon.innerHTML = '<circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>';
-  }
+  try{ localStorage.setItem('image-fantasy-theme', th); }catch(_){}
+  $('themeIcon').innerHTML = THEME_ICON[th];
 }
 $('themeToggle').onclick = () => {
   const cur = document.documentElement.getAttribute('data-theme') || 'dark';
   applyTheme(cur === 'dark' ? 'light' : 'dark');
 };
 
-/* ================= 视图路由切换 ================= */
+/* ================= 视图切换 ================= */
 function showView(v){
   const isCfg = (v === 'config');
   $('viewGen').classList.toggle('hide', isCfg);
   $('viewConfig').classList.toggle('hide', !isCfg);
-  document.querySelectorAll('#navTabs button').forEach(b => b.classList.toggle('active', b.dataset.v === v));
+  closeModelMenu();
+  window.scrollTo(0, 0);
   if(location.hash !== '#' + v){
     try{ history.replaceState(null, '', '#' + v); }catch(_){}
   }
+  if(!isCfg) layoutStage();
 }
-document.querySelectorAll('#navTabs button').forEach(b => {
-  b.onclick = () => showView(b.dataset.v);
-});
+$('brandBtn').onclick = () => showView('gen');
+$('openConfigBtn').onclick = () => showView('config');
+$('backToGen').onclick = () => showView('gen');
 window.addEventListener('hashchange', () => {
   showView(location.hash === '#config' ? 'config' : 'gen');
 });
 
-/* ================= 模式切换（文生图 / 参考图编辑） ================= */
-document.querySelectorAll('#modeSeg button').forEach(b => {
-  b.onclick = () => {
-    document.querySelectorAll('#modeSeg button').forEach(x => x.classList.remove('active'));
-    b.classList.add('active');
-    mode = b.dataset.m;
-    $('editBox').classList.toggle('hide', mode !== 'edit');
-    $('goText').textContent = mode === 'edit' ? '编辑并生成图像' : '立即生成图像';
-  };
+/* ================= 模型选择器（渠道 + 模型） ================= */
+function updateSelectionUI(){
+  if(providers.length){
+    const p = providers.find(x => x.id === $('selProvider').value);
+    $('pickerMain').textContent = $('selModel').value || '未选择模型';
+    $('pickerSub').textContent = p ? `${p.name} · ${apiTypeName(p)}` : '';
+  }else{
+    $('pickerMain').textContent = '还没有图像渠道';
+    $('pickerSub').textContent = '点击后可前往设置添加';
+  }
+  updateRatioMeta();
+}
+
+function renderModelMenu(){
+  const curP = $('selProvider').value, curM = $('selModel').value;
+  const groups = providers.map(p => {
+    const models = p.models || [];
+    const items = models.length
+      ? models.map(m => {
+          const on = p.id === curP && m === curM;
+          return `<button class="menu-item${on ? ' on' : ''}" type="button" role="option" aria-selected="${on}" data-p="${esc(p.id)}" data-m="${esc(m)}"><span>${esc(m)}</span>${ICON.check}</button>`;
+        }).join('')
+      : '<div class="menu-none">未配置模型</div>';
+    return `<div class="menu-group"><div class="menu-label"><span>${esc(p.name)}</span><span>${apiTypeName(p)}</span></div>${items}</div>`;
+  }).join('');
+  $('modelMenu').innerHTML = (groups || '<div class="menu-none">还没有图像渠道</div>')
+    + '<div class="menu-foot"><button class="menu-link" type="button" data-act="refresh">刷新列表</button>'
+    + '<button class="menu-link" type="button" data-act="manage">管理渠道</button></div>';
+}
+function openModelMenu(){
+  renderModelMenu();
+  $('modelMenu').classList.remove('hide');
+  $('modelPicker').classList.add('open');
+  $('pickerBtn').setAttribute('aria-expanded', 'true');
+  const cur = $('modelMenu').querySelector('.menu-item.on') || $('modelMenu').querySelector('.menu-item, .menu-link');
+  if(cur){
+    cur.focus({ preventScroll: true });
+    cur.scrollIntoView({ block: 'nearest' });
+  }
+}
+function closeModelMenu(){
+  if($('modelMenu').classList.contains('hide')) return;
+  $('modelMenu').classList.add('hide');
+  $('modelPicker').classList.remove('open');
+  $('pickerBtn').setAttribute('aria-expanded', 'false');
+}
+$('pickerBtn').onclick = () => {
+  $('modelMenu').classList.contains('hide') ? openModelMenu() : closeModelMenu();
+};
+$('modelMenu').addEventListener('click', e => {
+  const item = e.target.closest('.menu-item');
+  const act = e.target.closest('[data-act]');
+  if(item){
+    $('selProvider').value = item.dataset.p;
+    fillModels(item.dataset.p, item.dataset.m);
+    saveCfg();
+    closeModelMenu();
+    $('pickerBtn').focus();
+  }else if(act){
+    closeModelMenu();
+    if(act.dataset.act === 'manage') showView('config');
+    else loadProviders().then(ok => { if(ok) showToast('渠道列表已刷新', 'info'); });
+  }
+});
+$('modelMenu').addEventListener('keydown', e => {
+  if(e.key === 'ArrowDown' || e.key === 'ArrowUp'){
+    e.preventDefault();
+    const items = [...$('modelMenu').querySelectorAll('.menu-item, .menu-link')];
+    const i = items.indexOf(document.activeElement);
+    const next = items[(i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length];
+    if(next) next.focus();
+  }else if(e.key === 'Escape' || e.key === 'Tab'){
+    closeModelMenu();
+    if(e.key === 'Escape') $('pickerBtn').focus();
+  }
+});
+document.addEventListener('click', e => {
+  if(!$('modelPicker').contains(e.target)) closeModelMenu();
 });
 
-/* ================= 比例与画幅交互 ================= */
-function updateExecBadge(){
-  const p = $('selProvider');
-  const m = $('selModel');
-  const mTxt = (m && m.value) ? m.value : ((p && p.value) ? '已选渠道' : '未选模型');
-  const rEl = document.querySelector('#ratioGrid .ratio-card.active .ratio-name');
-  const rTxt = rEl ? rEl.textContent : (sizeVal || '自动尺寸');
-  if($('execModelBadge')) $('execModelBadge').textContent = mTxt;
-  if($('execRatioBadge')) $('execRatioBadge').textContent = rTxt;
+/* ================= 比例与画幅 ================= */
+function ratioLabel(){
+  const card = document.querySelector('#ratioGrid .ratio-card.active');
+  return card ? card.querySelector('.ratio-name').textContent : '自动';
+}
+function updateRatioMeta(){
+  const card = document.querySelector('#ratioGrid .ratio-card.active');
+  const v = card ? card.dataset.v : 'auto';
+  let text = '由模型决定';
+  if(v === 'custom') text = $('p_size').value.trim() || '输入宽 × 高';
+  else if(isMiniMax() && card && card.dataset.ratio) text = MINIMAX_SIZES[card.dataset.ratio];
+  else if(/^\d+x\d+$/.test(v)) text = v;
+  $('ratioMeta').textContent = text.replace(/\s*[x×]\s*/, ' × ');
 }
 
 function selectRatio(val){
@@ -2328,33 +1697,59 @@ function selectRatio(val){
   $('sizeCustomWrap').classList.toggle('hide', !custom);
   sizeVal = custom ? ($('p_size').value.trim() || 'auto') : val;
   saveCfg();
-  updateExecBadge();
+  updateRatioMeta();
 }
 document.querySelectorAll('#ratioGrid .ratio-card').forEach(c => {
-  c.onclick = () => selectRatio(c.dataset.v);
+  c.onclick = () => {
+    selectRatio(c.dataset.v);
+    if(c.dataset.v === 'custom') $('p_size').focus();
+  };
 });
 $('p_size').addEventListener('input', () => {
   if(!$('sizeCustomWrap').classList.contains('hide')){
     sizeVal = $('p_size').value.trim();
     saveCfg();
+    updateRatioMeta();
   }
 });
 
-/* ================= 药丸按钮组交互 ================= */
-function setupPills(containerId, cb){
-  document.querySelectorAll(`#${containerId} .pill-btn`).forEach(btn => {
-    btn.onclick = () => {
-      document.querySelectorAll(`#${containerId} .pill-btn`).forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      cb(btn.dataset.v);
-      saveCfg();
-    };
+/* ================= 选项：水印 / 智能润色 / 高级参数 ================= */
+function setWatermark(on){
+  wmVal = !!on;
+  $('wmSwitch').setAttribute('aria-checked', String(wmVal));
+}
+$('wmSwitch').onclick = () => {
+  setWatermark(!wmVal);
+  saveCfg();
+};
+
+function setPromptExtend(v){
+  peVal = v;
+  document.querySelectorAll('#peChips button').forEach(b => {
+    const on = b.dataset.v === v;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-checked', String(on));
   });
 }
-setupPills('wmChips', v => { wmVal = (v === 'on'); });
-setupPills('peChips', v => { peVal = v; });
+document.querySelectorAll('#peChips button').forEach(b => {
+  b.onclick = () => {
+    setPromptExtend(b.dataset.v);
+    saveCfg();
+  };
+});
 
-/* ================= 提示词快捷工具 ================= */
+// 折叠时在右侧概括当前的高级设置
+function updateAdvancedMeta(){
+  const parts = [];
+  if(!isMiniMax() && $('p_format').value) parts.push($('p_format').value.toUpperCase());
+  const resp = $('p_resp').value;
+  parts.push(resp === 'url' ? 'URL' : resp === 'b64_json' ? 'Base64' : '默认返回');
+  if($('p_extra').value.trim()) parts.push('透传参数');
+  $('advMeta').textContent = parts.join(' · ');
+}
+$('p_extra').addEventListener('input', updateAdvancedMeta);
+
+/* ================= 提示词工具 ================= */
 async function triggerInspiration(action){
   if(inspireRunning) return;
   const expanding = action === 'expand';
@@ -2366,18 +1761,17 @@ async function triggerInspiration(action){
     return;
   }
   if(expanding && !inspireCfg.model){
-    showToast('请先在「渠道设置」中配置 AI 灵感文本模型，再使用扩写', 'info');
+    showToast('请先在「设置」中配置灵感模型，再使用 AI 扩写', 'info');
     return;
   }
 
   // 随机操作始终生成新的构思，不根据输入框是否为空切换为扩写。
   if(!inspireCfg.model){
     const choices = INSPIRATIONS.filter(p => p !== inputPrompt);
-    const p = choices[Math.floor(Math.random() * choices.length)];
-    $('prompt').value = p;
+    $('prompt').value = choices[Math.floor(Math.random() * choices.length)];
     updatePromptStats();
     saveCfg();
-    showToast('已填入预置精选灵感 ✨', 'info');
+    showToast('已换一个灵感', 'info');
     return;
   }
 
@@ -2386,7 +1780,7 @@ async function triggerInspiration(action){
   inspireRunning = true;
   $('inspireBtn').disabled = true;
   $('expandBtn').disabled = true;
-  btn.innerHTML = `<span style="display:inline-block; animation:spin 1s linear infinite;">⏳</span> <span>${expanding ? '扩写中…' : '构思中…'}</span>`;
+  btn.innerHTML = `<span class="spin"></span><span>${expanding ? '扩写中…' : '构思中…'}</span>`;
 
   try {
     const r = await fetch('/api/inspire', {
@@ -2408,7 +1802,7 @@ async function triggerInspiration(action){
       $('prompt').value = d.prompt;
       updatePromptStats();
       saveCfg();
-      showToast(expanding ? '已扩写当前提示词 ✨' : '新灵感已生成，可继续修改或点击「AI 扩写」', 'success');
+      showToast(expanding ? '已扩写当前提示词' : '新灵感已生成，可继续修改或点击「AI 扩写」', 'success');
     } else {
       throw new Error((d && d.error) || (r.ok ? '模型未返回有效提示词' : 'HTTP ' + r.status));
     }
@@ -2427,18 +1821,19 @@ $('clearPromptBtn').onclick = () => {
   $('prompt').value = '';
   updatePromptStats();
   saveCfg();
+  $('prompt').focus();
 };
 $('copyPromptBtn').onclick = () => {
-  copyText($('prompt').value.trim(), '提示词已复制到剪贴板 ✓');
+  copyText($('prompt').value.trim(), '提示词已复制到剪贴板');
 };
-document.querySelectorAll('.tag-chip').forEach(chip => {
+document.querySelectorAll('.chip[data-tag]').forEach(chip => {
   chip.onclick = () => {
     const val = chip.dataset.tag;
     const cur = $('prompt').value.trim();
     $('prompt').value = cur ? (cur + '，' + val) : val;
     updatePromptStats();
     saveCfg();
-    showToast('已追加风格修饰词 ✓', 'info');
+    showToast(`已追加「${chip.textContent}」`, 'info');
   };
 });
 $('prompt').addEventListener('input', () => {
@@ -2447,76 +1842,125 @@ $('prompt').addEventListener('input', () => {
 });
 function updatePromptStats(){
   const length = [...$('prompt').value].length;
-  $('promptLen').textContent = isMiniMax() ? `${length} / 1500 字符` : `${length} 字符`;
+  $('promptLen').textContent = isMiniMax() ? `${length} / 1500 字` : `${length} 字`;
+  $('promptLen').classList.toggle('over', isMiniMax() && length > 1500);
+  fitPrompt();
+}
+// 输入框随内容增高，超过上限后在框内滚动
+function fitPrompt(){
+  const t = $('prompt');
+  t.style.height = 'auto';
+  t.style.height = Math.min(Math.max(t.scrollHeight, 150), 360) + 'px';
 }
 
-/* ================= 参考图上传交互（点击 + 拖拽） ================= */
-function bindDropzone(dropId, inputId, thumbId, emptyId){
-  const drop = $(dropId), input = $(inputId), thumb = $(thumbId), empty = $(emptyId);
-  let objectUrl = '';
+/* ================= 参考图 / 遮罩附件（点击 + 拖拽） ================= */
+// 参考图挂在提示词框上：添加了参考图即按参考图生成（mode = edit），遮罩为可选附件。
+const attachUrls = { img: '', mask: '' };
 
-  const render = (f) => {
-    if(objectUrl){ URL.revokeObjectURL(objectUrl); objectUrl = ''; }
-    if(!f){
-      thumb.innerHTML = '';
-      thumb.classList.add('hide');
-      empty.classList.remove('hide');
-      drop.classList.remove('has-file');
-      return;
+function setAttachment(kind, file){
+  const input = $(kind === 'img' ? 'imgFile' : 'maskFile');
+  if(file){
+    if(input.files[0] !== file){
+      // 拖拽进来的文件同步进 input，保证 go / buildPayload 能从 input.files 读到
+      try{
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        input.files = dt.files;
+      }catch(_){}
     }
-    objectUrl = URL.createObjectURL(f);
-    thumb.innerHTML = `
-      <img src="${objectUrl}" class="dropzone-img" alt="">
-      <div class="dropzone-info">
-        <div class="dropzone-name">${esc(f.name)}</div>
-        <div class="dropzone-action">点击或拖拽可更换</div>
-      </div>
-    `;
-    thumb.classList.remove('hide');
-    empty.classList.add('hide');
-    drop.classList.add('has-file');
-  };
+  }else{
+    input.value = '';
+    // 移除参考图时一并清掉遮罩，避免下次添加参考图时带上旧遮罩
+    if(kind === 'img') $('maskFile').value = '';
+  }
+  renderAttachments();
+}
 
-  input.addEventListener('change', () => render(input.files[0]));
+function renderAttachChip(kind, file){
+  const chip = $(kind === 'img' ? 'imgChip' : 'maskChip');
+  const label = kind === 'img' ? '参考图' : '遮罩';
+  if(attachUrls[kind]){ URL.revokeObjectURL(attachUrls[kind]); attachUrls[kind] = ''; }
+  chip.classList.toggle('add', !file);
+  if(!file){
+    chip.innerHTML = `${ICON.plus}<span>${label}</span>`;
+    return;
+  }
+  attachUrls[kind] = URL.createObjectURL(file);
+  chip.innerHTML = `<img src="${attachUrls[kind]}" alt=""><span class="att-name" title="${esc(file.name)}">${label}</span>`
+    + `<button class="att-x" type="button" data-kind="${kind}" title="移除${label}">${ICON.x}</button>`;
+}
 
-  // 拖拽：dragover 必须 preventDefault，否则浏览器不会触发 drop
+function renderAttachments(){
+  const img = $('imgFile').files[0], mask = $('maskFile').files[0];
+  mode = img ? 'edit' : 'generate';
+  $('editBox').classList.toggle('hide', !img);
+  $('attachBtn').classList.toggle('on', !!img);
+  $('attachBtn').title = img ? '更换参考图' : '添加参考图（也可以把图片拖进提示词框）';
+  renderAttachChip('img', img);
+  renderAttachChip('mask', mask);
+}
+
+$('attachBtn').onclick = () => $('imgFile').click();
+$('imgFile').addEventListener('change', renderAttachments);
+$('maskFile').addEventListener('change', renderAttachments);
+$('editBox').addEventListener('click', e => {
+  const x = e.target.closest('.att-x');
+  if(x){
+    e.stopPropagation();
+    setAttachment(x.dataset.kind, null);
+  }else if(e.target.closest('#imgChip')){
+    $('imgFile').click();
+  }else if(e.target.closest('#maskChip')){
+    $('maskFile').click();
+  }
+});
+['imgChip', 'maskChip'].forEach(id => {
+  $(id).addEventListener('keydown', e => {
+    if(e.target === $(id) && (e.key === 'Enter' || e.key === ' ')){
+      e.preventDefault();
+      $(id).click();
+    }
+  });
+});
+
+const hasFiles = e => !!e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+function bindDrop(el, kind){
   ['dragenter', 'dragover'].forEach(ev =>
-    drop.addEventListener(ev, e => {
+    el.addEventListener(ev, e => {
+      // 只接管文件拖拽，拖动文字进输入框保持浏览器默认行为
+      if(!hasFiles(e)) return;
       e.preventDefault();
       e.stopPropagation();
-      drop.classList.add('dragging');
+      el.classList.add('dragging');
     })
   );
   ['dragleave', 'dragend'].forEach(ev =>
-    drop.addEventListener(ev, e => {
-      e.preventDefault();
-      e.stopPropagation();
+    el.addEventListener(ev, e => {
       // dragleave 在子元素间移动时也会冒泡，用 relatedTarget 判断是否真的离开
-      if(ev === 'dragleave' && e.relatedTarget && drop.contains(e.relatedTarget)) return;
-      drop.classList.remove('dragging');
+      if(ev === 'dragleave' && e.relatedTarget && el.contains(e.relatedTarget)) return;
+      el.classList.remove('dragging');
     })
   );
-  drop.addEventListener('drop', e => {
+  el.addEventListener('drop', e => {
+    if(!hasFiles(e)) return;
     e.preventDefault();
     e.stopPropagation();
-    drop.classList.remove('dragging');
-    const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    document.querySelectorAll('.dragging').forEach(n => n.classList.remove('dragging'));
+    const f = e.dataTransfer.files[0];
     if(!f) return;
     if(!/^image\//.test(f.type)){
-      return showToast('请拖入图片文件（png / jpg / webp）', 'warning');
+      return showToast('请拖入图片文件（PNG / JPG / WebP）', 'warning');
     }
-    // 同步进 input，保证 buildPayload 能从 input.files 读到
-    try {
-      const dt = new DataTransfer();
-      dt.items.add(f);
-      input.files = dt.files;
-    }catch(_){}
-    render(f);
-    showToast(`已载入参考图：${f.name}`, 'success');
+    setAttachment(kind, f);
+    showToast(`已添加${kind === 'img' ? '参考图' : '遮罩'}：${f.name}`, 'success');
   });
 }
-bindDropzone('imgDrop', 'imgFile', 'imgThumb', 'imgEmpty');
-bindDropzone('maskDrop', 'maskFile', 'maskThumb', 'maskEmpty');
+bindDrop($('composer'), 'img');
+bindDrop($('maskChip'), 'mask');
+// 拖到其他区域的文件不交给浏览器直接打开，否则会离开当前页面
+['dragover', 'drop'].forEach(ev => window.addEventListener(ev, e => {
+  if(hasFiles(e)) e.preventDefault();
+}));
 
 /* ================= 进度计时器与状态 ================= */
 function elapsedSec(){ return Math.max(0, Math.round((Date.now() - t0) / 1000)); }
@@ -2538,13 +1982,19 @@ function markStep(num, status){
 function resetSteps(){
   [1, 2, 3].forEach(n => markStep(n, null));
   $('progressCard').classList.remove('finished', 'failed');
+  $('progressTitle').textContent = '正在生成';
+  $('progressCloseBtn').classList.add('hide');
 }
-/* 收尾：停转圈 + 冻结计时。任何非成功路径都必须调用，否则用户会看到"其实早已结束"的动画。 */
+/* 收尾：停止动画 + 冻结计时。任何非成功路径都必须调用，否则用户会看到"其实早已结束"的动画。 */
 function finishProgress(kind){
   stopTimer();
   const card = $('progressCard');
   card.classList.add('finished');
   card.classList.toggle('failed', kind === 'failed');
+  if(kind === 'failed'){
+    $('progressTitle').textContent = '生成失败';
+    $('progressCloseBtn').classList.remove('hide');
+  }
   $('stTimer').textContent = kind === 'done'
     ? `共耗时 ${elapsedSec()} 秒`
     : `已中止 · 等待 ${elapsedSec()} 秒`;
@@ -2573,49 +2023,51 @@ function saveCfg(){
 }
 function loadCfg(){
   let cfg = {};
-  try{ cfg = JSON.parse(localStorage.getItem(CFG_KEY) || '{}'); }catch(_){}
+  try{ cfg = JSON.parse(localStorage.getItem(CFG_KEY) || '{}') || {}; }catch(_){}
   wantSel.provider = cfg.selProvider || '';
   wantSel.model = cfg.selModel || '';
   if(cfg.prompt) $('prompt').value = cfg.prompt;
-  updatePromptStats();
   ['format', 'resp', 'quality', 'style', 'background', 'comp', 'minimax_style', 'minimax_style_weight'].forEach(k => {
     const el = $('p_' + k);
     if(!el) return;
     if(cfg[k] !== undefined) el.value = cfg[k];
-    el.addEventListener('change', saveCfg);
+    el.addEventListener('change', () => {
+      saveCfg();
+      updateAdvancedMeta();
+    });
   });
   if(cfg.size){
     if(SIZE_PRESETS.includes(cfg.size)){ selectRatio(cfg.size); }
     else { $('p_size').value = cfg.size; selectRatio('custom'); }
   }
-  if(cfg.wm){
-    document.querySelectorAll('#wmChips .pill-btn').forEach(b => b.classList.toggle('active', b.dataset.v === 'on'));
-    wmVal = true;
-  }
-  if(cfg.pe){
-    document.querySelectorAll('#peChips .pill-btn').forEach(b => b.classList.toggle('active', b.dataset.v === cfg.pe));
-    peVal = cfg.pe;
-  }
+  setWatermark(!!cfg.wm);
+  if(cfg.pe) setPromptExtend(cfg.pe);
+  updatePromptStats();
+  updateAdvancedMeta();
 }
 
 /* ================= 供应商与模型数据 ================= */
 async function loadProviders(){
-  let ok = false;
   try{
     const r = await fetch('/api/providers');
     if(!r.ok) throw new Error('HTTP ' + r.status);
     const list = await r.json();
-    if(Array.isArray(list)){ providers = list; ok = true; }
-    else throw new Error('返回格式异常');
+    if(!Array.isArray(list)) throw new Error('返回格式异常');
+    providers = list;
   }catch(e){
     // 拉取失败时不要把 providers 清空再 saveCfg，否则会把已选渠道写坏
+    if(!providers.length){
+      $('pickerMain').textContent = '渠道加载失败';
+      $('pickerSub').textContent = '点击后可刷新列表';
+    }
     showToast('渠道加载失败：' + friendlyErrMsg(e.message), 'error');
-    return;
+    return false;
   }
   renderProviderSelects();
-  renderProviderCards();
+  renderProviderList();
   fillInspireProviders();
-  if(ok) saveCfg();
+  saveCfg();
+  return true;
 }
 
 function renderProviderSelects(){
@@ -2625,8 +2077,8 @@ function renderProviderSelects(){
   selP.innerHTML = '';
 
   if(!providers.length){
-    selP.innerHTML = '<option value="">（暂无供应商渠道）</option>';
-    selM.innerHTML = '<option value="">—</option>';
+    selP.innerHTML = '<option value="">（暂无渠道）</option>';
+    selM.innerHTML = '<option value=""></option>';
     updateChannelUI();
     return;
   }
@@ -2647,7 +2099,7 @@ function fillModels(pid, prefer){
   const p = providers.find(x => x.id === pid);
   const models = (p && p.models) || [];
   if(!models.length){
-    selM.innerHTML = '<option value="">（暂无配置模型）</option>';
+    selM.innerHTML = '<option value=""></option>';
     updateChannelUI();
     return;
   }
@@ -2661,98 +2113,94 @@ function fillModels(pid, prefer){
   updateChannelUI();
 }
 
-$('selProvider').onchange = () => {
-  fillModels($('selProvider').value);
-  saveCfg();
-  updateExecBadge();
-};
-$('selModel').onchange = () => {
-  updateChannelUI();
-  saveCfg();
-  updateExecBadge();
-};
-$('retryBtn').onclick = () => {
-  loadProviders();
-  showToast('供应商列表已重新拉取', 'info');
-};
-
-/* ================= 设置页：供应商卡片管理 ================= */
-function renderProviderCards(){
-  const grid = $('provGrid');
-  grid.innerHTML = '';
+/* ================= 设置页：图像渠道列表与行内编辑 ================= */
+function renderProviderList(){
+  const list = $('provList'), editor = $('provFormCard');
+  if(editingId && !providers.some(p => p.id === editingId)){
+    resetProvForm();
+    editor.classList.add('hide');
+  }
+  editor.remove();   // 编辑器节点保留，行重建后再放回
+  list.innerHTML = '';
   if(!providers.length){
-    grid.innerHTML = '<div style="color:var(--text-muted); font-size:13px; padding:10px 0;">暂无供应商渠道，请在下方表单添加第一个渠道。</div>';
-    return;
+    list.innerHTML = '<div class="list-empty">还没有图像渠道，填写下面的表单添加第一个。</div>';
+    editor.classList.remove('hide');
   }
   providers.forEach(p => {
-    const card = document.createElement('div');
-    card.className = 'provider-card';
-    const models = p.models || [];
-    card.innerHTML = `
-      <div>
-        <div class="prov-header">
-          <div class="prov-title">${esc(p.name)}</div>
-          <span class="count-tag">${p.api_type === 'minimax' ? 'MiniMax 原生' : 'OpenAI 兼容'} · ${models.length} 个模型</span>
-        </div>
-        <div class="prov-url" style="margin-top:6px;">${esc(p.base)}</div>
-        <div class="prov-models-chips" style="margin-top:10px;">
-          ${models.map(m => `<span class="prov-model-badge">${esc(m)}</span>`).join('')}
-        </div>
+    const row = document.createElement('div');
+    row.className = 'item';
+    row.dataset.id = p.id;
+    const count = (p.models || []).length;
+    row.innerHTML = `
+      <div class="item-main">
+        <div class="item-name"><span>${esc(p.name)}</span><span class="tag">${apiTypeName(p)}</span></div>
+        <div class="item-url">${esc(p.base)}</div>
       </div>
-      <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--border); padding-top:10px;">
-        <span style="font-size:11px; color:var(--text-dim);">${p.key ? '● 凭据已保存' : '○ 无 Key 本地服务'}</span>
-        <div style="display:flex; gap:6px;">
-          <button class="btn btn-outline btn-sm edit-btn">编辑</button>
-          <button class="btn btn-danger btn-sm del-btn">删除</button>
-        </div>
-      </div>
+      <span class="item-side">${count} 个模型${p.key ? '' : ' · 未填 Key'}</span>
+      <button class="tbtn" type="button">${editingId === p.id ? '收起' : '编辑'}</button>
     `;
-    card.querySelector('.edit-btn').onclick = () => startEditProvider(p);
-    card.querySelector('.del-btn').onclick = () => deleteProvider(p);
-    grid.appendChild(card);
+    row.querySelector('button').onclick = () => editingId === p.id ? closeProvEditor() : openProvEditor(p);
+    list.appendChild(row);
   });
+  const row = editingId && [...list.children].find(el => el.dataset.id === editingId);
+  if(row) row.after(editor);
+  else list.appendChild(editor);
 }
 
-function startEditProvider(p){
-  editingId = p.id;
-  $('pv_name').value = p.name || '';
-  $('pv_base').value = p.base || '';
-  $('pv_key').value = p.key || '';
-  $('pv_models').value = (p.models || []).join('\n');
-  $('pv_type').value = p.api_type || 'openai';
-  updateProviderForm();
-  $('formTitle').textContent = '编辑供应商：' + p.name;
-  $('pv_save').textContent = '保存修改';
-  $('pv_cancel').classList.remove('hide');
-  hideFetchPanel();
+function openProvEditor(p){
+  resetProvForm();
+  if(p){
+    editingId = p.id;
+    $('pv_name').value = p.name || '';
+    $('pv_base').value = p.base || '';
+    $('pv_key').value = p.key || '';
+    $('pv_models').value = (p.models || []).join('\n');
+    $('pv_type').value = p.api_type || 'openai';
+    updateProviderForm();
+    $('formTitle').textContent = '编辑渠道：' + p.name;
+    $('pv_save').textContent = '保存修改';
+    $('pv_delete').classList.remove('hide');
+  }
+  $('provFormCard').classList.remove('hide');
+  renderProviderList();
   $('provFormCard').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  $('pv_name').focus({ preventScroll: true });
+}
+function closeProvEditor(){
+  resetProvForm();
+  $('provFormCard').classList.add('hide');
+  renderProviderList();
 }
 function resetProvForm(){
   editingId = null;
   ['pv_name', 'pv_base', 'pv_key', 'pv_models'].forEach(id => { $(id).value = ''; });
   $('pv_type').value = 'openai';
   updateProviderForm();
-  $('formTitle').textContent = '添加新供应商渠道';
-  $('pv_save').textContent = '保存供应商渠道';
-  $('pv_cancel').classList.add('hide');
+  $('formTitle').textContent = '添加渠道';
+  $('pv_save').textContent = '保存渠道';
+  $('pv_delete').classList.add('hide');
   $('pv_showkey').checked = false;
   $('pv_key').type = 'password';
-  $('pv_state').textContent = '';
   hideFetchPanel();
 }
-$('pv_cancel').onclick = resetProvForm;
+$('addProvBtn').onclick = () => openProvEditor(null);
+$('pv_cancel').onclick = closeProvEditor;
+$('pv_delete').onclick = () => {
+  const p = providers.find(x => x.id === editingId);
+  if(p) deleteProvider(p);
+};
 $('pv_showkey').onchange = () => { $('pv_key').type = $('pv_showkey').checked ? 'text' : 'password'; };
 
 function updateProviderForm(fillDefaults = false){
   const mini = $('pv_type').value === 'minimax';
-  $('pv_base_label').textContent = mini ? 'MiniMax API 地址' : 'Base URL (以 /v1 结尾)';
+  $('pv_base_label').textContent = mini ? 'API 地址' : '接口地址';
   $('pv_base').placeholder = mini ? MINIMAX_DEFAULT_BASE : 'https://api.example.com/v1';
   $('pv_key').placeholder = mini ? '填写 MiniMax 平台的 API Key' : 'sk-...';
   $('pv_models').placeholder = mini ? MINIMAX_MODELS.join('\n') : 'gpt-image-2\nqwen-image-3.0\nsensenova-u1.5-lite';
   $('pv_type_hint').textContent = mini
     ? '支持 image-01 / image-01-live；默认使用国内接口，也可填写国际站或转发地址。'
-    : '适用于 OpenAI 兼容的图片接口与代理渠道。';
-  $('pv_fetch_text').textContent = mini ? '填入 MiniMax 预设模型' : '从接口自动拉取模型列表';
+    : '适用于 OpenAI 兼容的图片接口与代理渠道，地址通常以 /v1 结尾。';
+  $('pv_fetch_text').textContent = mini ? '填入预设模型' : '从接口获取';
   if(fillDefaults){
     if(mini){
       if(!$('pv_base').value.trim()) $('pv_base').value = MINIMAX_DEFAULT_BASE;
@@ -2772,7 +2220,7 @@ async function saveProvider(){
   const key = $('pv_key').value.trim();
   const models = $('pv_models').value.split('\n').map(s => s.trim()).filter(Boolean);
   if(!name || !base){
-    showToast('渠道名称和 Base URL 为必填项', 'warning');
+    showToast('名称和接口地址为必填项', 'warning');
     return;
   }
   const body = { name, base, key, models, api_type: $('pv_type').value };
@@ -2797,19 +2245,19 @@ async function saveProvider(){
     showToast('保存失败：' + friendlyErrMsg((saved && (saved.error || saved.message)) || ('HTTP ' + r.status)), 'error');
     return;
   }
-  resetProvForm();
+  closeProvEditor();
   await loadProviders();
   if(saved && saved.id){
     $('selProvider').value = saved.id;
     fillModels(saved.id);
     saveCfg();
   }
-  showToast('供应商渠道配置已保存 ✓', 'success');
+  showToast('渠道已保存', 'success');
 }
 $('pv_save').onclick = saveProvider;
 
 async function deleteProvider(p){
-  if(!confirm(`确定删除供应商「${p.name}」吗？已生成的历史图片不会丢失。`)) return;
+  if(!confirm(`确定删除渠道「${p.name}」吗？已生成的作品不会丢失。`)) return;
   try{
     const r = await fetch('/api/providers/' + encodeURIComponent(p.id), { method: 'DELETE' });
     if(!r.ok){
@@ -2817,12 +2265,12 @@ async function deleteProvider(p){
       throw new Error((d && (d.error || d.message)) || ('HTTP ' + r.status));
     }
   }catch(e){
-    showToast('删除失败: ' + friendlyErrMsg(e.message), 'error');
+    showToast('删除失败：' + friendlyErrMsg(e.message), 'error');
     return;
   }
-  if(editingId === p.id) resetProvForm();
+  if(editingId === p.id) closeProvEditor();
   await loadProviders();
-  showToast('已删除供应商渠道', 'info');
+  showToast('已删除渠道', 'info');
 }
 
 /* 拉取模型列表 */
@@ -2830,21 +2278,21 @@ function hideFetchPanel(){ $('fetchPanel').classList.add('hide'); fetchedModels 
 $('pv_fetch').onclick = async () => {
   const base = $('pv_base').value.trim();
   const key = $('pv_key').value.trim();
-  if(!base) return showToast('请先填写 Base URL', 'warning');
+  if(!base) return showToast('请先填写接口地址', 'warning');
   const mini = $('pv_type').value === 'minimax';
-  showToast(mini ? '正在载入 MiniMax 预设模型…' : '正在从接口拉取模型列表…', 'info');
+  showToast(mini ? '正在载入 MiniMax 预设模型…' : '正在从接口获取模型列表…', 'info');
   try{
     const r = await fetch('/api/fetch-models', {
       method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ base, key, api_type: $('pv_type').value })
     });
     const d = await r.json().catch(() => ({}));
-    if(!r.ok) return showToast('拉取失败：' + (d.error || r.status), 'error');
+    if(!r.ok) return showToast('获取失败：' + (d.error || r.status), 'error');
     const list = d.models || [];
     if(!list.length) return showToast('接口未返回任何可用模型', 'warning');
     fetchedModels = list;
     renderFetchPanel();
-    showToast(`${mini ? '已载入预设' : '成功获取'} ${list.length} 个模型`, 'success');
-  }catch(e){ showToast('拉取异常：' + e.message, 'error'); }
+    showToast(`${mini ? '已载入预设' : '已获取'} ${list.length} 个模型`, 'success');
+  }catch(e){ showToast('获取失败：' + e.message, 'error'); }
 };
 function renderFetchPanel(){
   const current = $('pv_models').value.split('\n').map(s => s.trim()).filter(Boolean);
@@ -2860,7 +2308,7 @@ function renderFetchPanel(){
     cb.checked = curSet.has(m);
     cb.onchange = updateFvCount;
     lab.appendChild(cb);
-    lab.appendChild(document.createTextNode(' ' + m));
+    lab.appendChild(document.createTextNode(m));
     listEl.appendChild(lab);
   });
   $('fv_filter').value = '';
@@ -2870,7 +2318,7 @@ function renderFetchPanel(){
 function updateFvCount(){
   const boxes = [...document.querySelectorAll('#fv_list input[type=checkbox]')];
   const checked = boxes.filter(cb => cb.checked).length;
-  $('fv_count').textContent = `已选 ${checked} / 共 ${boxes.length}`;
+  $('fv_count').textContent = `已选 ${checked} / ${boxes.length}`;
 }
 $('fv_filter').addEventListener('input', () => {
   const q = $('fv_filter').value.trim().toLowerCase();
@@ -2901,17 +2349,17 @@ $('fv_apply').onclick = () => {
   [...picked, ...manualKeep].forEach(m => { if(!seen.has(m)){ seen.add(m); uniq.push(m); } });
   $('pv_models').value = uniq.join('\n');
   hideFetchPanel();
-  showToast(`已应用 ${uniq.length} 个模型，请记得点击保存`, 'success');
+  showToast(`已填入 ${uniq.length} 个模型，保存后生效`, 'success');
 };
 
-/* ================= AI 灵感大模型配置 ================= */
+/* ================= 灵感模型配置 ================= */
 const INSPIRE_CFG_KEY = 'image-fantasy-inspire-v1';
 function saveInspireCfg(){
-  inspireCfg.provider = ($('cfg_inspire_prov') ? $('cfg_inspire_prov').value : '').trim();
-  inspireCfg.model = ($('cfg_inspire_model') ? $('cfg_inspire_model').value : '').trim();
+  inspireCfg.provider = $('cfg_inspire_prov').value.trim();
+  inspireCfg.model = $('cfg_inspire_model').value.trim();
   try{ localStorage.setItem(INSPIRE_CFG_KEY, JSON.stringify(inspireCfg)); }catch(_){}
   updateInspireUI();
-  showToast(inspireCfg.model ? `已绑定灵感大模型 [${inspireCfg.model}] ✨` : '已恢复为本地预置精选词库 ✨', 'success');
+  showToast(inspireCfg.model ? `灵感模型已设为 ${inspireCfg.model}` : '已清除灵感模型，随机灵感将使用内置短句', 'success');
 }
 function loadInspireCfg(){
   try{
@@ -2919,29 +2367,28 @@ function loadInspireCfg(){
     inspireCfg.provider = d.provider || '';
     inspireCfg.model = d.model || '';
   }catch(_){}
-  if($('cfg_inspire_model')) $('cfg_inspire_model').value = inspireCfg.model || '';
+  $('cfg_inspire_model').value = inspireCfg.model || '';
   updateInspireUI();
 }
 function updateInspireUI(){
   const hint = $('inspire_cfg_hint');
-  const btn = $('inspireBtn');
-  const expandBtn = $('expandBtn');
-  if(hint){
-    hint.textContent = inspireCfg.model ? `已启用 [${inspireCfg.model}] 随机灵感与手动扩写` : '随机使用本地词库；扩写需配置文本模型';
-    hint.style.color = inspireCfg.model ? 'var(--primary)' : 'var(--text-dim)';
-  }
-  if(btn){
-    btn.title = inspireCfg.model ? `由 [${inspireCfg.model}] 用一句话确定主体和场景，替换当前内容` : '随机填入一句简短的画面构思，替换当前内容';
-  }
-  if(expandBtn){
-    expandBtn.title = inspireCfg.model ? `由 [${inspireCfg.model}] 扩写当前提示词，保留主体并补充细节` : '请先在「渠道设置」中配置 AI 灵感文本模型';
-  }
+  hint.textContent = inspireCfg.model ? `已启用 ${inspireCfg.model}` : '未配置';
+  hint.classList.toggle('on', !!inspireCfg.model);
+  $('inspireBtn').title = inspireCfg.model
+    ? `由 ${inspireCfg.model} 用一句话确定主体和场景，替换当前内容`
+    : '随机填入一句简短的画面构思，替换当前内容';
+  $('expandBtn').title = inspireCfg.model
+    ? `由 ${inspireCfg.model} 扩写当前提示词，保留主体并补充构图、光影与细节`
+    : '请先在「设置」中配置灵感模型';
 }
 function fillInspireProviders(){
   const sel = $('cfg_inspire_prov');
-  if(!sel) return;
   sel.innerHTML = '';
   const textProviders = providers.filter(p => p.api_type !== 'minimax');
+  if(!textProviders.length){
+    sel.innerHTML = '<option value="">（需要先添加 OpenAI 兼容渠道）</option>';
+    return;
+  }
   textProviders.forEach(p => {
     const o = document.createElement('option');
     o.value = p.id;
@@ -2952,25 +2399,22 @@ function fillInspireProviders(){
     sel.value = inspireCfg.provider;
   }
 }
-if($('btn_save_inspire_cfg')) $('btn_save_inspire_cfg').onclick = saveInspireCfg;
-if($('btn_clear_inspire_cfg')) $('btn_clear_inspire_cfg').onclick = () => {
-  if($('cfg_inspire_model')) $('cfg_inspire_model').value = '';
+$('btn_save_inspire_cfg').onclick = saveInspireCfg;
+$('btn_clear_inspire_cfg').onclick = () => {
+  $('cfg_inspire_model').value = '';
   saveInspireCfg();
 };
 
-/* ================= 服务探活心跳 ================= */
+/* ================= 服务探活：只在连接不上时提示 ================= */
 async function refreshSvc(){
+  let ok = false;
   try{
     const r = await fetch('/api/ping', { cache: 'no-store' });
     const d = await r.json();
-    const ok = !!(d && d.ok);
-    const el = $('svc');
-    el.className = 'svc-badge ' + (ok ? 'ok' : 'bad');
-    $('svcTxt').textContent = ok ? '本地服务在线' : '服务未响应';
-  }catch(_){
-    $('svc').className = 'svc-badge bad';
-    $('svcTxt').textContent = '服务离线';
-  }
+    ok = !!(d && d.ok);
+  }catch(_){}
+  $('svcTxt').textContent = '无法连接本地服务，正在重试…';
+  $('svc').classList.toggle('hide', ok);
 }
 
 /* ================= 生成主流程 ================= */
@@ -3039,22 +2483,30 @@ function fileToB64(file){
   });
 }
 
+// 生成中占位框的宽高比：自动尺寸按 1:1 占位
+function targetRatio(){
+  const card = document.querySelector('#ratioGrid .ratio-card.active');
+  const v = !card ? 'auto' : card.dataset.v === 'custom' ? $('p_size').value.trim() : card.dataset.v;
+  const m = /^(\d+)\s*[x×:]\s*(\d+)$/.exec(v || '');
+  return m && +m[1] && +m[2] ? m[1] / m[2] : 1;
+}
+
 async function go(){
   if(running) return;
 
   const pid = $('selProvider').value;
   if(!pid || !providers.some(p => p.id === pid)){
-    return showToast('请先选择一个有效的供应商渠道', 'warning');
+    return showToast('请先选择一个有效的图像渠道', 'warning');
   }
   if(!$('selModel').value.trim()){
-    return showToast('请在当前供应商下选择生图模型', 'warning');
+    return showToast('请在当前渠道下选择模型', 'warning');
   }
   if(mode === 'generate' && !$('prompt').value.trim()){
     $('prompt').focus();
     return showToast('请输入提示词后再生成', 'warning');
   }
   if(mode === 'edit' && !$('imgFile').files[0]){
-    return showToast('参考图编辑模式必须上传一张参考图', 'warning');
+    return showToast('请先添加一张参考图', 'warning');
   }
   if(isMiniMax()){
     if(!$('prompt').value.trim()) return showToast('MiniMax 生成图像需要填写提示词', 'warning');
@@ -3066,29 +2518,31 @@ async function go(){
 
   let payload;
   try { payload = buildPayload(); }
-  catch(e){ return showToast('参数校验错误: ' + e.message, 'error'); }
+  catch(e){ return showToast('参数校验错误：' + e.message, 'error'); }
 
   // 切换运行状态
   running = true;
   ctrl = new AbortController();
+  closeModelMenu();
   $('go').disabled = true;
-  $('goText').textContent = '图像生成中…';
+  $('goText').textContent = '生成中';
   $('cancelBtn').classList.remove('hide');
 
-  // 右侧舞台展示状态
-  $('heroEmpty').classList.add('hide');
-  $('heroResult').classList.add('hide');
-  $('progressCard').classList.remove('hide');
+  // 舞台切到进度视图，按目标比例占位
+  $('progressFigure').dataset.r = targetRatio();
+  $('phText').textContent = sizeVal === 'auto' ? '自动尺寸' : $('ratioMeta').textContent;
+  $('progressSub').textContent = [payload.model, ratioLabel(), mode === 'edit' ? '含参考图' : ''].filter(Boolean).join(' · ');
   resetSteps();
+  showStage('progressCard');
   markStep(1, 'active');
-  $('stText').textContent = '正在连接本地服务并提交任务…';
+  $('stText').textContent = '正在提交…';
   startTimer();
 
   let doneEv = null, errEv = null, cancelled = false, netErr = null, activeStep = 2;
 
   try {
     if(mode === 'edit'){
-      $('stText').textContent = '正在读取参考图及遮罩…';
+      $('stText').textContent = '正在读取参考图…';
       payload.image = await fileToB64($('imgFile').files[0]);
       const mask = !isMiniMax() && $('maskFile').files[0];
       if(mask) payload.mask = await fileToB64(mask);
@@ -3127,16 +2581,16 @@ async function go(){
         if(ev.stage === 'accepted'){
           markStep(1, 'done');
           markStep(2, 'active');
-          $('stText').textContent = '模型正在生成图像（尺寸越大耗时越长，请稍候）…';
+          $('stText').textContent = '模型正在生成，尺寸越大耗时越长';
         } else if(ev.stage === 'upstream'){
           markStep(1, 'done');
           markStep(2, 'active');
-          $('stText').textContent = `模型 [${ev.model || 'AI'}] 正在渲染精美细节…`;
+          $('stText').textContent = `${ev.model || '模型'} 正在生成`;
         } else if(ev.stage === 'saving'){
           activeStep = 3;
           markStep(2, 'done');
           markStep(3, 'active');
-          $('stText').textContent = '上游数据返回成功，正在将高清图片落盘入库…';
+          $('stText').textContent = '正在保存到图库…';
         } else if(ev.stage === 'done'){
           doneEv = ev;
         } else if(ev.stage === 'error'){
@@ -3151,41 +2605,39 @@ async function go(){
     running = false;
     ctrl = null;
     $('go').disabled = false;
-    $('goText').textContent = mode === 'edit' ? '编辑并生成图像' : '立即生成图像';
+    $('goText').textContent = '生成';
     $('cancelBtn').classList.add('hide');
     stopTimer();
   }
 
   if(cancelled){
-    markStep(1, null); markStep(2, null); markStep(3, null);
-    $('progressCard').classList.add('hide');
-    $('heroEmpty').classList.remove('hide');
-    showToast('已取消本次生成等待', 'info');
+    resetSteps();
+    restoreStage();
+    showToast('已取消生成', 'info');
     setTimeout(loadGallery, 3000);
   } else if(netErr){
     markStep(activeStep, 'error');
     finishProgress('failed');
-    $('stText').textContent = '连接中断或错误: ' + friendlyErrMsg(netErr.message);
-    showToast('生成失败: ' + friendlyErrMsg(netErr.message), 'error');
+    $('stText').textContent = '连接中断：' + friendlyErrMsg(netErr.message);
+    showToast('生成失败：' + friendlyErrMsg(netErr.message), 'error');
   } else if(errEv){
     markStep(activeStep, 'error');
     finishProgress('failed');
     let msg = (typeof errEv.message === 'string') ? errEv.message : JSON.stringify(errEv.message);
     msg = friendlyErrMsg(msg, errEv.http);
-    const prefix = activeStep === 3 ? '图像已生成，保存失败: ' : '生成失败: ';
+    const prefix = activeStep === 3 ? '图像已生成，保存失败：' : '生成失败：';
     $('stText').textContent = prefix + msg;
     showToast(prefix + msg, 'error');
   } else if(doneEv && doneEv.items && doneEv.items.length){
     markStep(1, 'done'); markStep(2, 'done'); markStep(3, 'done');
     finishProgress('done');
-    $('progressCard').classList.add('hide');
     renderHeroResult(doneEv.items[0]);
     loadGallery();
-    showToast(`创作完成！用时 ${elapsedSec()} 秒 ✨`, 'success');
+    showToast(`生成完成，用时 ${elapsedSec()} 秒`, 'success');
   } else {
     finishProgress('failed');
-    $('stText').textContent = '生成结束但未获取到图像数据';
-    showToast('未收到图像数据，请稍后刷新图库查看', 'warning');
+    $('stText').textContent = '生成结束，但没有收到图像数据';
+    showToast('没有收到图像数据，请稍后刷新图库查看', 'warning');
   }
 }
 
@@ -3193,10 +2645,10 @@ async function go(){
 function friendlyErrMsg(raw, http){
   const s = String(raw || '');
   if(/invalid images|should contain between/i.test(s)){
-    return '当前模型不支持图生图（该渠道不接受 images 参数）。请换用支持图生图的模型，或切回「文生图」模式重试。';
+    return '当前模型不支持参考图生成（该渠道不接受 images 参数）。请换用支持图生图的模型，或移除参考图后重试。';
   }
   if(/model does not exist|unknown model|model_not_found/i.test(s)){
-    return '当前模型不可用（上游不认识该模型名）。请到供应商管理里核对模型列表。';
+    return '当前模型不可用（上游不认识该模型名）。请到设置里核对模型列表。';
   }
   if(/insufficient|quota|rate limit|too many requests/i.test(s)){
     return '上游额度不足或触发限流，请稍后重试或更换渠道。';
@@ -3206,56 +2658,172 @@ function friendlyErrMsg(raw, http){
 }
 
 $('go').onclick = go;
-if($('quickGoBtn')) $('quickGoBtn').onclick = go;
 $('cancelBtn').onclick = () => { if(ctrl) ctrl.abort(); };
+$('progressCloseBtn').onclick = () => restoreStage();
 
-/* 渲染 Hero 焦点大图卡片 */
-function renderHeroResult(item){
-  $('heroEmpty').classList.add('hide');
-  $('progressCard').classList.add('hide');
-  const res = $('heroResult');
-  res.classList.remove('hide');
-  
-  $('heroImg').src = item.url;
-  $('heroPrompt').textContent = item.prompt || '(无提示词)';
-  $('heroDl').href = item.url;
-  $('heroDl').download = item.filename || 'image.png';
-  $('heroExtraInfo').textContent = [item.model, item.size, item.output_format].filter(Boolean).join(' · ');
+/* ================= 舞台：空状态 / 生成进度 / 作品详情 ================= */
+const STAGE_INFO_W = 288, STAGE_GAP = 40;   // 与 CSS 中的 --info-w 和 .stage-view 间距一致
+let stageLayoutKey = '';
 
-  $('heroImg').onclick = () => openLightboxByItem(item);
-  $('heroReuseBtn').onclick = () => {
-    if(item.prompt){
-      $('prompt').value = item.prompt;
-      updatePromptStats();
-      saveCfg();
-      showToast('已将提示词填入工作台', 'success');
-    }
-  };
+function showStage(id){
+  ['heroEmpty', 'progressCard', 'heroResult'].forEach(v => $(v).classList.toggle('hide', v !== id));
+  stageLayoutKey = '';
+  layoutStage();
+}
+/* 按画面比例计算展示尺寸：宽度不超过可用空间，高度不超过视口的 62% */
+function layoutStage(){
+  const stage = $('stage');
+  if(!stage.offsetParent) return;   // 设置页打开时舞台不可见
+  const fig = stage.querySelector('.stage-view:not(.hide) .figure');
+  if(!fig) return;
+  const width = stage.clientWidth;
+  const r = parseFloat(fig.dataset.r) || 1;
+  const key = [fig.id, width, r, window.innerHeight].join('|');
+  if(key === stageLayoutKey) return;
+  stageLayoutKey = key;
+  const narrow = width < 720;
+  stage.classList.toggle('stacked', narrow);
+  const avail = narrow ? width : width - STAGE_INFO_W - STAGE_GAP;
+  const maxH = Math.max(260, Math.min(window.innerHeight * 0.62, 640));
+  const w = Math.min(avail, maxH * r);
+  fig.style.width = Math.round(w) + 'px';
+  fig.style.height = Math.round(w / r) + 'px';
+}
+new ResizeObserver(layoutStage).observe($('stage'));
+window.addEventListener('resize', layoutStage);
+
+function fmtTime(ms){
+  if(!ms) return '—';
+  const d = new Date(ms), now = new Date();
+  const hm = d.toTimeString().slice(0, 5);
+  if(d.toDateString() === now.toDateString()) return '今天 ' + hm;
+  return `${d.getFullYear() === now.getFullYear() ? '' : d.getFullYear() + '年'}${d.getMonth() + 1}月${d.getDate()}日 ${hm}`;
+}
+function fmtFormat(item){
+  return (item.output_format || String(item.filename || '').split('.').pop() || '').toUpperCase();
+}
+function reusePrompt(item){
+  if(!item.prompt) return;
+  $('prompt').value = item.prompt;
+  updatePromptStats();
+  saveCfg();
+  showToast('已填入提示词', 'success');
 }
 
-/* ================= 历史画廊管理 ================= */
+function renderHeroResult(item){
+  stageItem = item;
+  const img = $('heroImg'), fig = $('heroFigure');
+  const known = /^(\d+)x(\d+)$/.exec(item.size || '');
+  fig.dataset.r = ratioCache[item.id] || (known ? known[1] / known[2] : 1);
+  const onReady = () => {
+    if(stageItem !== item || !img.naturalWidth) return;
+    const r = img.naturalWidth / img.naturalHeight;
+    rememberRatio(item.id, r);
+    fig.dataset.r = r;
+    $('heroSize').textContent = `${img.naturalWidth} × ${img.naturalHeight}`;
+    layoutStage();
+  };
+  img.onload = onReady;
+  img.src = item.url;
+  img.onclick = () => openLightboxByItem(item);
+
+  $('heroPrompt').textContent = item.prompt || '（无提示词）';
+  $('heroPrompt').classList.remove('expanded');
+  $('heroMore').textContent = '展开全文';
+  $('heroMeta').innerHTML = `
+    <dt>模型</dt><dd>${esc(item.model || '—')}</dd>
+    <dt>尺寸</dt><dd id="heroSize">${esc(item.size || '—')}</dd>
+    <dt>方式</dt><dd>${item.mode === 'edit' ? '参考图生成' : '文生图'}</dd>
+    <dt>格式</dt><dd>${esc(fmtFormat(item) || '—')}</dd>
+    <dt>时间</dt><dd>${fmtTime(item.created)}</dd>
+  `;
+  $('heroDl').href = item.url;
+  $('heroDl').download = item.filename || 'image.png';
+  $('heroZoomBtn').onclick = () => openLightboxByItem(item);
+  $('heroCopyBtn').onclick = () => copyText(item.prompt || '', '提示词已复制');
+  $('heroReuseBtn').onclick = () => reusePrompt(item);
+  $('heroDelBtn').onclick = () => deleteGalleryItem(item.id);
+
+  showStage('heroResult');
+  if(img.complete) onReady();
+  requestAnimationFrame(() => {
+    const p = $('heroPrompt');
+    $('heroMore').classList.toggle('hide', p.scrollHeight <= p.clientHeight + 1);
+  });
+  markSelectedTile();
+}
+$('heroMore').onclick = () => {
+  const expanded = $('heroPrompt').classList.toggle('expanded');
+  $('heroMore').textContent = expanded ? '收起' : '展开全文';
+};
+
+function showEmptyStage(){
+  stageItem = null;
+  showStage('heroEmpty');
+  markSelectedTile();
+}
+// 回到生成前展示的作品；它已被删除时展示最新一张
+function restoreStage(){
+  const cur = stageItem && galleryList.find(x => x.id === stageItem.id);
+  const latest = galleryList[galleryList.length - 1];
+  if(cur || latest) renderHeroResult(cur || latest);
+  else showEmptyStage();
+}
+
+/* ================= 图库 ================= */
+// 作品宽高比缓存：图库按原比例排版，缓存可避免每次打开页面时整体跳动
+const RATIO_KEY = 'image-fantasy-ratios-v1';
+let ratioCache = {};
+try{ ratioCache = JSON.parse(localStorage.getItem(RATIO_KEY) || '{}') || {}; }catch(_){ ratioCache = {}; }
+let ratioSaveTimer = null;
+function persistRatios(){
+  clearTimeout(ratioSaveTimer);
+  ratioSaveTimer = setTimeout(() => {
+    try{ localStorage.setItem(RATIO_KEY, JSON.stringify(ratioCache)); }catch(_){}
+  }, 400);
+}
+function rememberRatio(id, r){
+  if(!id || !isFinite(r) || r <= 0) return;
+  r = Math.round(r * 10000) / 10000;
+  if(ratioCache[id] === r) return;
+  ratioCache[id] = r;
+  persistRatios();
+}
+
 async function loadGallery(){
   try {
     const r = await fetch('/api/gallery');
     if(!r.ok) throw new Error('HTTP ' + r.status);
     const list = await r.json();
-    if(Array.isArray(list)){
-      galleryList = list;
-      renderGallery();
-      return true;
-    }
-    throw new Error('返回格式异常');
+    if(!Array.isArray(list)) throw new Error('返回格式异常');
+    galleryList = list;
+    const ids = new Set(list.map(it => it.id));
+    let pruned = false;
+    Object.keys(ratioCache).forEach(id => { if(!ids.has(id)){ delete ratioCache[id]; pruned = true; } });
+    if(pruned) persistRatios();
+    renderGallery();
+    syncStage();
+    return true;
   }catch(e){
-    // 不再静默吞掉：服务挂了要能看出来，而不是伪装成「空空如也」
+    // 不静默吞掉：服务挂了要能看出来，而不是伪装成「还没有作品」
     galleryList = [];
     renderGallery();
-    const grid = $('gallery');
-    if(grid) grid.innerHTML = `<div style="grid-column:1/-1; text-align:center; padding:40px 0; color:var(--danger); font-size:13px;">
-      图库加载失败：${esc(friendlyErrMsg(e.message))}<br>
-      <span style="color:var(--text-dim)">请确认后端服务正在运行，然后点「刷新」重试</span>
-    </div>`;
+    $('gallery').innerHTML = `<div class="gallery-empty error">图库加载失败：${esc(friendlyErrMsg(e.message))}<br>
+      <span>请确认后端服务正在运行，然后点刷新按钮重试</span></div>`;
+    if(!running && $('progressCard').classList.contains('hide') && !stageItem) showEmptyStage();
     return false;
   }
+}
+
+/* 舞台默认展示最新作品；正在展示的作品被删除后改为展示最新一张 */
+function syncStage(){
+  // 生成中或失败信息还没关闭时不打断
+  if(running || !$('progressCard').classList.contains('hide')) return;
+  if(stageItem && galleryList.some(x => x.id === stageItem.id)){
+    markSelectedTile();
+    return;
+  }
+  restoreStage();
 }
 
 function renderGallery(){
@@ -3268,76 +2836,78 @@ function renderGallery(){
     return (it.prompt || '').toLowerCase().includes(q) || (it.model || '').toLowerCase().includes(q);
   });
 
-  $('gcount').textContent = `${galleryList.length} 张`;
+  $('gcount').textContent = galleryList.length;
 
   if(!filtered.length){
     visibleList = [];
-    grid.innerHTML = `<div style="grid-column:1/-1; text-align:center; padding:40px 0; color:var(--text-dim); font-size:13px;">
-      ${q ? '没有匹配到相关提示词的图片' : '暂无历史生成图片，快去创作第一张吧！'}
-    </div>`;
+    grid.innerHTML = `<div class="gallery-empty">${q ? '没有匹配的作品' : '还没有作品'}</div>`;
     return;
   }
 
   // 记住渲染顺序，供灯箱翻页使用
   visibleList = filtered.slice().reverse();
 
-  visibleList.forEach((it) => {
-    const card = document.createElement('div');
-    card.className = 'gallery-item';
-    card.innerHTML = `
-      <img src="${it.url}" class="gallery-thumb" loading="lazy" alt="">
-      <div class="gallery-overlay">
-        <div class="overlay-top">
-          <span class="overlay-badge">${esc(it.size || 'Auto')}</span>
-          <span class="overlay-badge">${esc(it.model || 'AI')}</span>
-        </div>
-        <div class="overlay-bottom">
-          <div class="overlay-prompt">${esc(it.prompt || '(无提示词)')}</div>
-          <div class="overlay-tools">
-            <button class="tool-btn zoom-btn" title="查看高清大图">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="11" y1="8" x2="11" y2="14"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
-            </button>
-            <button class="tool-btn copy-p-btn" title="复用此提示词">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 4v6h6"></path><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
-            </button>
-            <a class="tool-btn dl-btn" href="${it.url}" download="${it.filename || 'image.png'}" title="下载">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-            </a>
-            <button class="tool-btn del del-btn" title="删除此图">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-            </button>
-          </div>
-        </div>
+  visibleList.forEach(it => {
+    const known = /^(\d+)x(\d+)$/.exec(it.size || '');
+    const ratio = ratioCache[it.id] || (known ? known[1] / known[2] : 1);
+    const tile = document.createElement('figure');
+    tile.className = 'tile';
+    tile.dataset.id = it.id;
+    tile.tabIndex = 0;
+    tile.style.setProperty('--r', ratio);
+    tile.innerHTML = `
+      <img src="${esc(it.url)}" loading="lazy" alt="">
+      <figcaption class="tile-cap">${esc(it.prompt || '（无提示词）')}</figcaption>
+      <div class="tile-tools">
+        <button class="tool-btn zoom-btn" type="button" title="全屏查看">${ICON.expand}</button>
+        <a class="tool-btn" href="${esc(it.url)}" download="${esc(it.filename || 'image.png')}" title="下载">${ICON.download}</a>
+        <button class="tool-btn del del-btn" type="button" title="删除">${ICON.trash}</button>
       </div>
     `;
-
-    card.querySelector('.gallery-thumb').onclick = () => openLightboxByItem(it);
-    card.querySelector('.zoom-btn').onclick = (e) => { e.stopPropagation(); openLightboxByItem(it); };
-    card.querySelector('.copy-p-btn').onclick = (e) => {
-      e.stopPropagation();
-      if(it.prompt){
-        $('prompt').value = it.prompt;
-        updatePromptStats();
-        saveCfg();
-        showToast('已填入工作台提示词 ✓', 'success');
+    const img = tile.querySelector('img');
+    img.onload = () => {
+      if(!img.naturalWidth) return;
+      const r = img.naturalWidth / img.naturalHeight;
+      if(Math.abs(r - ratio) > 0.001) tile.style.setProperty('--r', r);
+      rememberRatio(it.id, r);
+    };
+    tile.onclick = e => { if(!e.target.closest('.tile-tools')) selectTile(it); };
+    tile.onkeydown = e => {
+      if(e.target === tile && e.key === 'Enter'){
+        e.preventDefault();
+        selectTile(it);
       }
     };
-    card.querySelector('.del-btn').onclick = (e) => {
-      e.stopPropagation();
-      deleteGalleryItem(it.id);
-    };
-    grid.appendChild(card);
+    tile.querySelector('.zoom-btn').onclick = e => { e.stopPropagation(); openLightboxByItem(it); };
+    tile.querySelector('.del-btn').onclick = e => { e.stopPropagation(); deleteGalleryItem(it.id); };
+    grid.appendChild(tile);
   });
+  markSelectedTile();
+}
+
+/* 点击缩略图：在上方舞台查看；生成进行中则直接全屏查看，不打断进度展示 */
+function selectTile(it){
+  if(running){
+    openLightboxByItem(it);
+    return;
+  }
+  renderHeroResult(it);
+  const canvas = $('canvas');
+  if(canvas.scrollHeight > canvas.clientHeight) canvas.scrollTo({ top: 0, behavior: 'smooth' });
+  else $('stage').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function markSelectedTile(){
+  const id = stageItem && stageItem.id;
+  document.querySelectorAll('#gallery .tile').forEach(t => t.classList.toggle('sel', !!id && t.dataset.id === id));
 }
 
 $('gFilter').addEventListener('input', renderGallery);
-$('refreshGalleryBtn').onclick = () => {
-  loadGallery();
-  showToast('画廊已刷新', 'info');
+$('refreshGalleryBtn').onclick = async () => {
+  if(await loadGallery()) showToast('图库已刷新', 'info');
 };
 
 async function deleteGalleryItem(id){
-  if(!confirm('确定删除这张图片吗？将从服务器永久移除。')) return;
+  if(!confirm('确定删除这张作品吗？将从服务器永久移除。')) return;
   try{
     const r = await fetch('/api/gallery/' + encodeURIComponent(id), { method: 'DELETE' });
     if(!r.ok){
@@ -3346,16 +2916,16 @@ async function deleteGalleryItem(id){
     }
   }catch(e){
     // 删除失败就如实报错，不能弹"已删除"骗用户
-    showToast('删除失败: ' + friendlyErrMsg(e.message), 'error');
+    showToast('删除失败：' + friendlyErrMsg(e.message), 'error');
     return;
   }
-  loadGallery();
-  showToast('图片已删除', 'info');
+  await loadGallery();
+  showToast('作品已删除', 'info');
 }
 
-/* ================= 沉浸式大图灯箱 Lightbox ================= */
+/* ================= 全屏查看 ================= */
 function openLightboxByItem(item){
-  // 在「当前渲染顺序」里定位；找不到就退到 0，并直接显示传入的 item，
+  // 在「当前渲染顺序」里定位；找不到就记为 -1，并直接显示传入的 item，
   // 不能回退成第 0 张——那会让用户看到另一张不相干的图。
   const idx = visibleList.findIndex(x => x.id === item.id || x.url === item.url);
   curLightboxIdx = idx;
@@ -3363,9 +2933,9 @@ function openLightboxByItem(item){
 }
 function showLightbox(item){
   $('lbImg').src = item.url;
-  $('lbPrompt').textContent = item.prompt || '(无提示词)';
+  $('lbPrompt').textContent = item.prompt || '（无提示词）';
   $('lbPrompt').title = item.prompt || '';
-  $('lbMeta').textContent = [item.model, item.size, item.output_format, new Date(item.created || Date.now()).toLocaleString()].filter(Boolean).join(' · ');
+  $('lbMeta').textContent = [item.model, item.size, fmtFormat(item), fmtTime(item.created)].filter(Boolean).join(' · ');
   $('lbDl').href = item.url;
   $('lbDl').download = item.filename || 'image.png';
   $('lbOpen').href = item.url;
@@ -3375,11 +2945,8 @@ function showLightbox(item){
     copyText(item.prompt || '', '提示词已复制');
   };
   $('lbReuseBtn').onclick = () => {
-    $('prompt').value = item.prompt || '';
-    updatePromptStats();
-    saveCfg();
+    reusePrompt(item);
     closeLB();
-    showToast('已填入工作台提示词', 'success');
   };
 }
 function closeLB(){
@@ -3387,6 +2954,7 @@ function closeLB(){
   $('lbImg').src = '';
 }
 $('lbX').onclick = closeLB;
+$('lb').onclick = e => { if(e.target === $('lb')) closeLB(); };
 
 $('lbPrev').onclick = () => {
   if(!visibleList.length) return;
@@ -3402,11 +2970,14 @@ $('lbNext').onclick = () => {
   showLightbox(visibleList[curLightboxIdx]);
 };
 
-/* ================= 键盘快捷键监听 ================= */
+/* ================= 键盘快捷键 ================= */
 document.addEventListener('keydown', e => {
-  // ESC 关闭灯箱
-  if(e.key === 'Escape') closeLB();
-  // 灯箱内左右键切换
+  // Esc 关闭全屏查看和模型菜单
+  if(e.key === 'Escape'){
+    closeLB();
+    closeModelMenu();
+  }
+  // 全屏查看时左右键切换
   if(!$('lb').classList.contains('hide')){
     if(e.key === 'ArrowLeft') $('lbPrev').click();
     if(e.key === 'ArrowRight') $('lbNext').click();
@@ -3420,16 +2991,18 @@ document.addEventListener('keydown', e => {
   }
 });
 
-/* ================= 初始化启动 ================= */
+/* ================= 初始化 ================= */
 initTheme();
+document.querySelectorAll('.kbd-go').forEach(el => { el.textContent = KBD_GO; });
 loadCfg();
+renderAttachments();
 showView(location.hash === '#config' ? 'config' : 'gen');
 loadProviders();
 loadInspireCfg();
 refreshSvc();
 setInterval(refreshSvc, 12000);
 loadGallery();
-updateExecBadge();
+updateSelectionUI();
 </script>
 </body>
 </html>
