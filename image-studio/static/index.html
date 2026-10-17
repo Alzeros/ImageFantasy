@@ -533,7 +533,8 @@
   .svc-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--danger); }
 
   /* 舞台：空状态 / 生成进度 / 作品详情，三者同一时间只显示一个 */
-  .stage-view { display: flex; align-items: flex-start; gap: 40px; }
+  /* 图片与信息作为一组居中，避免剩余宽度全部堆到最右侧 */
+  .stage-view { display: flex; justify-content: center; align-items: flex-start; gap: 40px; }
   .stage.stacked .stage-view { flex-direction: column; gap: 20px; }
   .figure { position: relative; flex: none; max-width: 100%; }
   .figure > img {
@@ -2670,7 +2671,7 @@ function showStage(id){
   stageLayoutKey = '';
   layoutStage();
 }
-/* 按画面比例计算展示尺寸：宽度不超过可用空间，高度不超过视口的 62% */
+/* 按画面比例计算展示尺寸：宽度不超过可用空间，高度不超过视口的 72% */
 function layoutStage(){
   const stage = $('stage');
   if(!stage.offsetParent) return;   // 设置页打开时舞台不可见
@@ -2684,7 +2685,7 @@ function layoutStage(){
   const narrow = width < 720;
   stage.classList.toggle('stacked', narrow);
   const avail = narrow ? width : width - STAGE_INFO_W - STAGE_GAP;
-  const maxH = Math.max(260, Math.min(window.innerHeight * 0.62, 640));
+  const maxH = Math.max(260, Math.min(window.innerHeight * 0.72, 700));
   const w = Math.min(avail, maxH * r);
   fig.style.width = Math.round(w) + 'px';
   fig.style.height = Math.round(w / r) + 'px';
