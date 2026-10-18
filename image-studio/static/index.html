@@ -517,7 +517,8 @@
   .go:disabled .go-spin { display: inline-block; }
 
   /* ================= 右侧画布 ================= */
-  .canvas { min-width: 0; overflow-y: auto; }
+  /* 预留滚动条宽度，避免图片随可用宽度缩放时反复触发溢出、重排与文字闪烁。 */
+  .canvas { min-width: 0; overflow-y: auto; scrollbar-gutter: stable; }
   .canvas-inner { max-width: 1180px; margin: 0 auto; padding: 36px 48px 72px; }
   .svc-banner {
     display: flex;
