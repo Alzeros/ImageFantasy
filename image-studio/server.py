@@ -1021,7 +1021,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
         parts = ["%s=" % SESSION_COOKIE, "Path=/", "HttpOnly", "SameSite=Lax", "Max-Age=0"]
         if self._is_https():
             parts.append("Secure")
-        self._send(200, {"ok": True}, headers={"Set-Cookie": "; ".join(parts)})
+        # 图片按文件名长期强缓存，登出时必须让浏览器清掉这些副本，否则知道 URL 的人
+        # 仍能从缓存里看到已登出账号的作品。只清 HTTP 缓存：主题与表单配置存在
+        # localStorage 里，不能用 "storage" 一起清掉。
+        self._send(200, {"ok": True}, headers={
+            "Set-Cookie": "; ".join(parts),
+            "Clear-Site-Data": '"cache"',
+        })
 
     # ---- 安全响应头、登录校验 ----
 

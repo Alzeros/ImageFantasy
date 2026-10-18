@@ -351,9 +351,11 @@ class AuthHTTPTests(unittest.TestCase):
 
     def test_logout_invalidates_session(self):
         token = self.setup_account()
-        status, _, cookie, _ = self.request("POST", "/api/auth/logout", cookie=token)
+        status, _, cookie, headers = self.request("POST", "/api/auth/logout", cookie=token)
         self.assertEqual(status, 200)
         self.assertIn("Max-Age=0", cookie)
+        # 图片是长期强缓存，登出必须让浏览器清掉，否则缓存里的作品仍可被打开
+        self.assertEqual(headers.get("Clear-Site-Data"), '"cache"')
         status, _, _, _ = self.request("GET", "/api/gallery", cookie=token)
         self.assertEqual(status, 401)
 
