@@ -1429,6 +1429,8 @@
 /* ================= 核心状态与数据 ================= */
 const $ = id => document.getElementById(id);
 const esc = s => String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// 图库格子用缩略图（约 50KB），点开看原图。后端没装 Pillow 时 thumb 会 302 到原图。
+const thumbOf = it => it.thumb || it.url;
 
 /* 复制到剪贴板。navigator.clipboard 只在安全上下文（HTTPS / localhost）可用，
    通过局域网 IP 以 http 访问时会直接 reject，必须兜底并如实提示。 */
@@ -2890,7 +2892,7 @@ function renderGallery(){
     tile.tabIndex = 0;
     tile.style.setProperty('--r', ratio);
     tile.innerHTML = `
-      <img src="${esc(it.url)}" loading="lazy" alt="">
+      <img src="${esc(thumbOf(it))}" loading="lazy" alt="">
       <figcaption class="tile-cap">${esc(it.prompt || '（无提示词）')}</figcaption>
       <div class="tile-tools">
         <button class="tool-btn zoom-btn" type="button" title="全屏查看">${ICON.expand}</button>

@@ -18,7 +18,9 @@ import server
 from test_server import PNG
 
 
-class GenerationResilienceTests(unittest.TestCase):
+class AppHarness(unittest.TestCase):
+    """起一个假上游 + 真 Handler，供下面的用例复用（本身没有 test_ 方法）。"""
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -67,9 +69,11 @@ class GenerationResilienceTests(unittest.TestCase):
         self.addCleanup(close)
         return httpd
 
-    def request(self, method, path, body=None):
+    def request(self, method, path, body=None, anon=False):
         conn = http.client.HTTPConnection("127.0.0.1", self.app.server_port, timeout=5)
-        headers = {"Content-Type": "application/json", "Cookie": "if_session=" + self.session}
+        headers = {"Content-Type": "application/json"}
+        if not anon:
+            headers["Cookie"] = "if_session=" + self.session
         conn.request(method, path, None if body is None else json.dumps(body), headers)
         response = conn.getresponse()
         content = response.read()
@@ -98,6 +102,7 @@ class GenerationResilienceTests(unittest.TestCase):
             "prompt": "回归测试", "params": params or {},
         })
 
+class GenerationResilienceTests(AppHarness):
     def test_client_disconnect_after_upstream_still_saves_image(self):
         """客户端在 saving 阶段断开：上游已经计费，图片必须照样入库。"""
         real_emit = server.Handler._emit
@@ -170,6 +175,80 @@ class GenerationResilienceTests(unittest.TestCase):
         self.assertLess(elapsed, 2, "图库接口被图片下载阻塞了")
         self.assertEqual(result["data"][0], 200)
         self.assertEqual(len(server.load_gallery()), 1)
+
+
+@unittest.skipUnless(server.Image, "需要 Pillow 才能生成缩略图")
+class ThumbnailTests(AppHarness):
+    def big_png(self, width=1200, height=800):
+        buffer = io.BytesIO()
+        server.Image.new("RGB", (width, height), (40, 90, 160)).save(buffer, "PNG")
+        return buffer.getvalue()
+
+    def generate_big(self):
+        self.upstream_response = {"data": [
+            {"b64_json": base64.b64encode(self.big_png()).decode()}]}
+        status, _, _ = self.generate()
+        self.assertEqual(status, 200)
+        return server.load_gallery()[0]
+
+    def test_generation_creates_thumbnail_and_serves_it(self):
+        item = self.generate_big()
+        self.assertEqual(item["thumb"], "/thumbs/" + item["filename"])
+        status, body, headers = self.request("GET", item["thumb"])
+        self.assertEqual(status, 200)
+        self.assertEqual(headers.get("Content-Type"), "image/jpeg")
+        self.assertEqual(headers.get("Cache-Control"), server.IMAGE_CACHE_CONTROL)
+        with server.Image.open(io.BytesIO(body)) as thumb:
+            self.assertEqual(max(thumb.size), server.THUMB_SIZE)
+            self.assertAlmostEqual(thumb.size[0] / thumb.size[1], 1.5, places=2)
+
+    def test_old_gallery_entry_gets_thumbnail_on_first_request(self):
+        filename, _ = server.save_image(
+            {"b64_json": base64.b64encode(self.big_png()).decode()}, None)
+        thumb_path = os.path.join(server.thumbs_dir(), server.thumb_name(filename))
+        os.remove(thumb_path)                 # 模拟升级前的老图库：只有原图
+        item_id = filename.rsplit(".", 1)[0]
+        server.save_gallery([{
+            "id": item_id, "filename": filename, "url": "/images/" + filename,
+            "prompt": "老作品", "model": "m", "size": "1200x800", "created": 1,
+        }])
+
+        status, items, _ = self.request("GET", "/api/gallery")
+        self.assertEqual(status, 200)
+        self.assertEqual(items[0]["thumb"], "/thumbs/" + filename)
+        self.assertFalse(os.path.isfile(thumb_path))
+
+        status, _, _ = self.request("GET", items[0]["thumb"])
+        self.assertEqual(status, 200)
+        self.assertTrue(os.path.isfile(thumb_path))
+
+    def test_without_pillow_redirects_to_original(self):
+        payload = {"data": [{"b64_json": base64.b64encode(self.big_png()).decode()}]}
+        with mock.patch.object(server, "Image", None):
+            self.upstream_response = payload
+            status, _, _ = self.generate()
+            self.assertEqual(status, 200)
+            item = server.load_gallery()[0]
+            # 没有 Pillow 时接口不再下发 thumb，前端直接用原图，省掉无意义的 302
+            status, items, _ = self.request("GET", "/api/gallery")
+            self.assertEqual(status, 200)
+            self.assertNotIn("thumb", items[0])
+            status, _, headers = self.request("GET", item["thumb"])
+        self.assertEqual(status, 302)
+        self.assertEqual(headers.get("Location"), item["url"])
+
+    def test_thumbnail_requires_login(self):
+        item = self.generate_big()
+        status, _, _ = self.request("GET", item["thumb"], anon=True)
+        self.assertEqual(status, 401)
+
+    def test_delete_removes_thumbnail_file(self):
+        item = self.generate_big()
+        thumb_path = os.path.join(server.thumbs_dir(), server.thumb_name(item["filename"]))
+        self.assertTrue(os.path.isfile(thumb_path))
+        status, _, _ = self.request("DELETE", "/api/gallery/" + item["id"])
+        self.assertEqual(status, 200)
+        self.assertFalse(os.path.isfile(thumb_path))
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Image Fantasy —— 自托管图像生成 Web 应用（零依赖，仅用 Python 标准库）
+Image Fantasy —— 自托管图像生成 Web 应用（后端以 Python 标准库为主，缩略图可选依赖 Pillow）
 
 特性：
   - 对接 OpenAI 兼容图像 API，以及 MiniMax 原生图片 API
@@ -15,6 +15,8 @@ Image Fantasy —— 自托管图像生成 Web 应用（零依赖，仅用 Pytho
     （accepted → upstream → saving → done / error），前端可显示生成进度
   - 服务端图库持久化：生成的图像落盘到 data/images，索引存 data/gallery.json，
     重启不丢；前端可按图库回看、删除
+  - 图库缩略图：生成时另存一张长边 640 的 JPEG（data/thumbs），前端格子只加载缩略图，
+    点开才取原图。装了 Pillow 才有；没装则退回原图，功能不受影响
   - 单文件后端 + 静态前端，Docker 一键部署
   - 账号密码登录：首次启动需用日志中的设置令牌设置账号；除登录页外的页面、图片与接口都要求登录
 
@@ -51,6 +53,11 @@ import tempfile
 import ipaddress
 import socket
 
+try:                       # 可选依赖：只用于图库缩略图，缺失时自动退回原图
+    from PIL import Image, ImageOps
+except ImportError:        # 保持「只用标准库也能跑」这个前提
+    Image = ImageOps = None
+
 PORT = int(os.environ.get("PORT", "19150"))  # 默认高位端口
 # 默认只监听本机回环。对外提供时显式设 HOST=0.0.0.0，并放在 HTTPS 反向代理之后：
 # 登录密码与会话 Cookie 不应以明文经过公网。
@@ -74,6 +81,13 @@ LOG_MAX_BYTES = 8 * 1024 * 1024
 # 图库里所有全尺寸图片都要重新下载一遍。HTML 与静态资源必须走 no-cache，
 # 否则更新代码后浏览器还在用旧页面。
 IMAGE_CACHE_CONTROL = "private, max-age=31536000, immutable"
+# 缩略图长边：图库格子最大约 320 CSS px，2x 屏 640 足够；4K 原图约 5MB，
+# 缩略图约 50KB，首屏与浏览器缓存都小两个数量级。
+THUMB_SIZE = 640
+THUMB_QUALITY = 82
+_LANCZOS = None
+if Image is not None:
+    _LANCZOS = getattr(Image, "Resampling", Image).LANCZOS
 os.makedirs(IMAGES_DIR, exist_ok=True)
 
 _lock = threading.RLock()  # 重入锁：load_gallery + save_gallery 可以嵌套调用
@@ -600,6 +614,59 @@ def ext_from_b64(b64):
     return "png"
 
 
+def thumbs_dir():
+    """缩略图目录：与 images 同级。按 IMAGES_DIR 推导，DATA_DIR 自定义时不跑偏。"""
+    path = os.path.join(os.path.dirname(IMAGES_DIR), "thumbs")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def thumb_name(filename):
+    return filename.rsplit(".", 1)[0] + ".jpg"
+
+
+def thumb_url(filename):
+    """缩略图地址带上原图扩展名：同一张图只有一个入口，服务端决定缩略图格式。"""
+    return "/thumbs/" + filename
+
+
+def make_thumb(filename):
+    """为一张图生成 JPEG 缩略图，返回是否成功。
+
+    没有 Pillow 或图片无法解码时返回 False：调用方退回原图即可，
+    应用在纯标准库环境下必须照常可用，只是图库加载原图会慢一些。
+    """
+    if Image is None:
+        return False
+    source = os.path.join(IMAGES_DIR, filename)
+    target = os.path.join(thumbs_dir(), thumb_name(filename))
+    if os.path.isfile(target):
+        return True
+    # 并发请求同一张图时各写各的临时文件再 replace，读者不会看到半张图
+    temp = target + "." + uuid.uuid4().hex[:6] + ".tmp"
+    try:
+        with Image.open(source) as im:
+            im = ImageOps.exif_transpose(im)
+            im.thumbnail((THUMB_SIZE, THUMB_SIZE), _LANCZOS)
+            if im.mode in ("RGBA", "LA") or (im.mode == "P" and "transparency" in im.info):
+                # 带透明通道的图直接转 JPEG 会变黑底，先压到白底上
+                im = im.convert("RGBA")
+                canvas = Image.new("RGB", im.size, (255, 255, 255))
+                canvas.paste(im, mask=im.getchannel("A"))
+                im = canvas
+            else:
+                im = im.convert("RGB")
+            im.save(temp, "JPEG", quality=THUMB_QUALITY, optimize=True, progressive=True)
+        os.replace(temp, target)
+        return True
+    except Exception:
+        try:
+            os.unlink(temp)
+        except OSError:
+            pass
+        return False
+
+
 def save_image(item, out_fmt):
     """把 upstream 返回的一张图(b64_json 或 url)落盘，返回 (filename, local_url)。
 
@@ -627,6 +694,7 @@ def save_image(item, out_fmt):
     path = os.path.join(IMAGES_DIR, filename)
     with open(path, "wb") as f:
         f.write(data)
+    make_thumb(filename)      # 失败不阻塞生成；访问 /thumbs/ 时会再试一次
     return filename, "/images/" + filename
 
 
@@ -1152,6 +1220,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
                  "webp": "image/webp"}.get(ext, "application/octet-stream")
         self._send_file(fpath, ctype, cache=IMAGE_CACHE_CONTROL)
 
+    def _serve_thumb(self, p):
+        """缩略图。缺失时懒生成（老图库第一次访问时补上）；不能生成就退回原图。"""
+        fname = os.path.basename(p)                 # 原图文件名，如 img_1_ab.png
+        if not os.path.isfile(os.path.join(IMAGES_DIR, fname)):
+            self._send(404, {"error": "not found"}); return
+        target = os.path.join(thumbs_dir(), thumb_name(fname))
+        if not os.path.isfile(target):
+            make_thumb(fname)
+        if os.path.isfile(target):
+            self._send_file(target, "image/jpeg", cache=IMAGE_CACHE_CONTROL)
+            return
+        # 没装 Pillow 或解码失败：重定向到原图，前端不需要任何兜底逻辑
+        self._send(302, headers={"Location": "/images/" + urllib.parse.quote(fname)})
+
     def _serve_static(self, p):
         fpath = os.path.normpath(os.path.join(STATIC_DIR, p[len("/static/"):]))
         if not fpath.startswith(STATIC_DIR):
@@ -1180,7 +1262,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._serve_static(p); return
 
         # 其余接口与图片一律要求登录；前端页面本身也只在已登录时下发
-        if p.startswith("/api/") or p.startswith("/images/"):
+        if p.startswith("/api/") or p.startswith("/images/") or p.startswith("/thumbs/"):
             if not self._require_login():
                 return
             no_store = {"Cache-Control": "no-store"}
@@ -1188,7 +1270,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._send(200, {"ok": True}, headers=no_store); return
             if p == "/api/gallery":
                 try:
-                    self._send(200, load_gallery(), headers=no_store)
+                    items = load_gallery()
+                    # 没装 Pillow 就直接给原图地址，省掉每张图一次无意义的 302；
+                    # 装了则给旧条目补上 thumb，前端不用做兼容判断。
+                    for it in items:
+                        if not isinstance(it, dict):
+                            continue
+                        if Image is None:
+                            it.pop("thumb", None)
+                        elif it.get("filename") and not it.get("thumb"):
+                            it["thumb"] = thumb_url(it["filename"])
+                    self._send(200, items, headers=no_store)
                 except Exception as e:
                     self._send(500, {"error": str(e)})
                 return
@@ -1203,6 +1295,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._send(200, {"ok": True, "time": int(time.time() * 1000)}, headers=no_store); return
             if p.startswith("/images/"):
                 self._serve_image(p); return
+            if p.startswith("/thumbs/"):
+                self._serve_thumb(p); return
             self._send(404, {"error": "not found"}); return
 
         if p.startswith("/static/"):
@@ -1248,6 +1342,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     fpath = os.path.join(IMAGES_DIR, it.get("filename", ""))
                     try:
                         if os.path.isfile(fpath): os.remove(fpath)
+                    except Exception:
+                        pass
+                    tpath = os.path.join(thumbs_dir(), thumb_name(it.get("filename", "")))
+                    try:
+                        if os.path.isfile(tpath): os.remove(tpath)
                     except Exception:
                         pass
                 else:
@@ -1394,6 +1493,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     gid = filename.rsplit(".", 1)[0]
                     saved.append({
                         "id": gid, "filename": filename, "url": local_url,
+                        "thumb": thumb_url(filename),
                         "prompt": prompt, "model": model,
                         "size": size,
                         "output_format": filename.rsplit(".", 1)[-1] if api_type == "minimax" else out_fmt or "",

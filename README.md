@@ -1,11 +1,12 @@
 # Image Fantasy
 
-自托管的 AI 图像创作工坊。后端使用 Python 标准库，前端为静态页面。
+自托管的 AI 图像创作工坊。后端以 Python 标准库为主，前端为静态页面；图库缩略图可选依赖 Pillow。
 
 - 支持 OpenAI 兼容渠道和 MiniMax 原生图片 API。
 - 支持文生图、参考图生成，以及渠道对应的画幅、画风等参数。
 - 随机灵感提供简短的画面构思，AI 扩写按需补充细节。
 - 支持渠道与模型管理、生成进度、图片下载和本地图库。
+- 图库只加载缩略图，点开才取原图；装不装 Pillow 都能用。
 - 账号密码登录：除登录页外，页面、图片和接口都需要登录后才能访问。
 
 ## 本地运行
@@ -13,6 +14,7 @@
 ```bash
 git clone https://github.com/Alzeros/ImageFantasy.git
 cd ImageFantasy
+pip3 install -r image-studio/requirements.txt   # 可选：只为图库缩略图，不装则加载原图
 python3 image-studio/server.py
 ```
 
@@ -105,6 +107,7 @@ MiniMax 渠道选择「MiniMax 原生」，默认地址为 `https://api.minimax.
 - `providers.json`：渠道配置和 API Key。
 - `gallery.json`：图库索引。
 - `images/`：生成的图片。
+- `thumbs/`：图库缩略图，可随时删除，访问时会按需重新生成。
 - `security.log`：登录记录。
 
 该目录不提交到 Git，也不进入 Docker 镜像。如需迁移现有配置和图库，请单独传输整个 `data/` 目录，并保管好其中的密钥。备份和迁移时先停止服务，避免索引与图片不同步。
