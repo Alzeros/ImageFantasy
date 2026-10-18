@@ -127,7 +127,7 @@ class ImageURLTests(unittest.TestCase):
         ), mock.patch.object(server.socket, "getaddrinfo",
                              return_value=dns_answers("198.18.0.112", "2001:2::70")), \
                 mock.patch.object(server.urllib.request, "build_opener", return_value=opener) as build:
-            filename, local_url = server.save_image({"url": IMAGE_URL}, 0, None)
+            filename, local_url = server.save_image({"url": IMAGE_URL}, None)
             with open(os.path.join(directory, filename), "rb") as saved:
                 self.assertEqual(saved.read(), PNG)
             self.assertEqual(local_url, "/images/" + filename)
@@ -139,7 +139,7 @@ class ImageURLTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, mock.patch.object(
             server, "IMAGES_DIR", directory
         ), mock.patch.object(server.urllib.request, "build_opener") as build:
-            filename, _ = server.save_image({"b64_json": base64.b64encode(PNG).decode()}, 0, None)
+            filename, _ = server.save_image({"b64_json": base64.b64encode(PNG).decode()}, None)
             with open(os.path.join(directory, filename), "rb") as saved:
                 self.assertEqual(saved.read(), PNG)
             build.assert_not_called()

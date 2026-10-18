@@ -70,6 +70,10 @@ SETUP_TOKEN_FILE = os.path.join(DATA_DIR, "setup-token")
 MAX_BODY = 64 * 1024 * 1024
 # 请求日志上限，超过则把旧日志重命名为 server.log.1（只保留一代）
 LOG_MAX_BYTES = 8 * 1024 * 1024
+# 生成的图片文件名唯一、内容永不修改，可以长期强缓存：否则每次打开页面，
+# 图库里所有全尺寸图片都要重新下载一遍。HTML 与静态资源必须走 no-cache，
+# 否则更新代码后浏览器还在用旧页面。
+IMAGE_CACHE_CONTROL = "private, max-age=31536000, immutable"
 os.makedirs(IMAGES_DIR, exist_ok=True)
 
 _lock = threading.RLock()  # 重入锁：load_gallery + save_gallery 可以嵌套调用
@@ -596,9 +600,14 @@ def ext_from_b64(b64):
     return "png"
 
 
-def save_image(item, idx, out_fmt):
-    """把 upstream 返回的一张图(b64_json 或 url)落盘，返回 (filename, local_url)。"""
-    name = "img_%d_%d" % (int(time.time() * 1000), idx)
+def save_image(item, out_fmt):
+    """把 upstream 返回的一张图(b64_json 或 url)落盘，返回 (filename, local_url)。
+
+    只做取图与写文件，不读也不写图库索引，因此调用方不需要（更不应该）持锁：
+    按 URL 下载可能耗时数十秒，持锁会把整个应用卡住。
+    """
+    # 时间戳保留文件名里的时间顺序；随机后缀消除并发同毫秒写入时的撞名覆盖。
+    name = "img_%d_%s" % (int(time.time() * 1000), uuid.uuid4().hex[:8])
     if item.get("b64_json"):
         ext = out_fmt or ext_from_b64(item["b64_json"])
         data = base64.b64decode(item["b64_json"])
@@ -826,7 +835,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _send_file(self, path, ctype):
+    def _send_file(self, path, ctype, cache="no-cache"):
         try:
             with open(path, "rb") as f:
                 data = f.read()
@@ -835,7 +844,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return
         self.send_response(200)
         self.send_header("Content-Type", ctype)
-        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Cache-Control", cache)
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
@@ -1135,7 +1144,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         ext = fname.rsplit(".", 1)[-1].lower()
         ctype = {"png": "image/png", "jpeg": "image/jpeg", "jpg": "image/jpeg",
                  "webp": "image/webp"}.get(ext, "application/octet-stream")
-        self._send_file(fpath, ctype)
+        self._send_file(fpath, ctype, cache=IMAGE_CACHE_CONTROL)
 
     def _serve_static(self, p):
         fpath = os.path.normpath(os.path.join(STATIC_DIR, p[len("/static/"):]))
@@ -1319,11 +1328,32 @@ class Handler(http.server.BaseHTTPRequestHandler):
         req = urllib.request.Request(endpoint, data=body, headers=hdrs, method="POST")
 
         # ---- 以下走 NDJSON 流式响应：阶段事件实时推送给前端 ----
-        self._start_stream()
+        try:
+            self._start_stream()
+        except OSError:
+            # 连响应头都写不出去，说明客户端早已断开：不要再去上游下单，省一次付费调用。
+            self.close_connection = True
+            return
+
+        client_gone = False
+
+        def emit(event):
+            """推一条事件给前端。客户端断开后只停止写事件，绝不影响后续落盘。"""
+            nonlocal client_gone
+            if client_gone:
+                return
+            try:
+                self._emit(event)
+            except OSError:
+                # 取消、关标签、切网都会走到这里（BrokenPipe / ConnectionReset 都是 OSError）。
+                # 上游很可能已经出图并计费，所以只能停止写事件，图片必须照常保存——
+                # 否则这一次调用就白花钱了。
+                client_gone = True
+
         try:
             try:
-                self._emit({"stage": "accepted", "time": int(time.time() * 1000)})
-                self._emit({"stage": "upstream", "model": model, "endpoint": endpoint})
+                emit({"stage": "accepted", "time": int(time.time() * 1000)})
+                emit({"stage": "upstream", "model": model, "endpoint": endpoint})
                 try:
                     with urllib.request.urlopen(req, timeout=600) as resp:
                         upstream = json.loads(resp.read().decode("utf-8"))
@@ -1332,16 +1362,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         err = json.loads(e.read().decode("utf-8"))
                     except Exception:
                         err = None
-                    self._emit({"stage": "error", "http": e.code,
-                                "message": upstream_err_text(err, e.code)})
+                    emit({"stage": "error", "http": e.code,
+                          "message": upstream_err_text(err, e.code)})
                     return
                 except Exception as e:
-                    self._emit({"stage": "error", "message": str(e)})
+                    emit({"stage": "error", "message": str(e)})
                     return
 
                 upstream = normalize_image_response(upstream, api_type)
                 items = upstream.get("data") or []
-                self._emit({"stage": "saving", "count": len(items)})
+                emit({"stage": "saving", "count": len(items)})
                 # MiniMax 不接受 output_format；按返回的真实图片内容确定后缀。
                 out_fmt = None if api_type == "minimax" else params.get("output_format")
                 size = params.get("size", "")
@@ -1350,42 +1380,30 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         "%sx%s" % (payload["width"], payload["height"]) if "width" in payload else "1:1"
                     )
                 saved = []
-                # 在锁内完成 读 -> 改 -> 写，避免并发修正
-                with _lock:
-                    try:
+                # 取图与写盘都在锁外：按 URL 下载可能耗时数十秒，持锁会卡死整个应用。
+                for it in items:
+                    filename, local_url = save_image(it, out_fmt)
+                    if not filename:
+                        continue
+                    gid = filename.rsplit(".", 1)[0]
+                    saved.append({
+                        "id": gid, "filename": filename, "url": local_url,
+                        "prompt": prompt, "model": model,
+                        "size": size,
+                        "output_format": filename.rsplit(".", 1)[-1] if api_type == "minimax" else out_fmt or "",
+                        "api_type": api_type,
+                        "mode": mode, "created": int(time.time() * 1000),
+                    })
+                if saved:
+                    # 只有索引的 读 -> 改 -> 写 需要加锁，避免并发丢条目。
+                    with _lock:
                         gallery = load_gallery()
-                    except Exception as e:
-                        # 加载失败，返回错误而不静默吞掉
-                        self._emit({"stage": "error", "message": f"图库加载失败: {e}"})
-                        raise
-                    for i, it in enumerate(items):
-                        filename, local_url = save_image(it, i, out_fmt)
-                        if not filename:
-                            continue
-                        gid = filename.rsplit(".", 1)[0]
-                        entry = {
-                            "id": gid, "filename": filename, "url": local_url,
-                            "prompt": prompt, "model": model,
-                            "size": size,
-                            "output_format": filename.rsplit(".", 1)[-1] if api_type == "minimax" else out_fmt or "",
-                            "api_type": api_type,
-                            "mode": mode, "created": int(time.time() * 1000),
-                        }
-                        gallery.append(entry)
-                        saved.append(entry)
-                    # 原子写
-                    data = json.dumps(gallery, ensure_ascii=False, indent=2).encode()
-                    _atomic_write(GALLERY_FILE, data)
-                self._emit({"stage": "done", "created": upstream.get("created"),
-                            "usage": upstream.get("usage"), "items": saved})
-            except (BrokenPipeError, ConnectionResetError):
-                # 前端断开（例如点了取消等待），安静收场
-                pass
+                        gallery.extend(saved)
+                        save_gallery(gallery)
+                emit({"stage": "done", "created": upstream.get("created"),
+                      "usage": upstream.get("usage"), "items": saved})
             except Exception as e:
-                try:
-                    self._emit({"stage": "error", "message": str(e)})
-                except Exception:
-                    pass
+                emit({"stage": "error", "message": str(e)})
         finally:
             try:
                 self._end_stream()

@@ -2645,8 +2645,10 @@ async function go(){
   if(cancelled){
     resetSteps();
     restoreStage();
-    showToast('已取消生成', 'info');
-    setTimeout(loadGallery, 3000);
+    // 上游请求已经发出，服务端无法真正中断（也不该浪费这笔已付费的调用）：
+    // 图会在上游返回后照常入库，所以这里只停止等待，并按退避刷新图库把它带出来。
+    showToast('已停止等待，出图后会自动存入图库', 'info');
+    [3000, 15000, 60000, 180000].forEach(ms => setTimeout(loadGallery, ms));
   } else if(netErr){
     markStep(activeStep, 'error');
     finishProgress('failed');
