@@ -825,6 +825,23 @@
     gap: 6px 12px;
   }
   .fetch-model-list .chk-label { color: var(--text); }
+  .fetch-model-list .ifv-item {
+    display: block;
+    min-width: 0;
+    padding: 5px 8px;
+    border: 1px solid transparent;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: 12.5px;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+  }
+  .fetch-model-list .ifv-item:hover { background: var(--line); border-color: var(--line); }
 
   /* ================= 全屏查看 ================= */
   .lightbox-modal {
@@ -1385,7 +1402,23 @@
           <label for="cfg_inspire_prov">渠道</label>
           <select id="cfg_inspire_prov" class="select"></select>
           <label for="cfg_inspire_model">模型</label>
-          <input id="cfg_inspire_model" class="input mono" placeholder="如 gpt-4o-mini / deepseek-chat / qwen-plus">
+          <div class="field-col">
+            <div class="inline">
+              <input id="cfg_inspire_model" class="input mono" placeholder="如 gpt-4o-mini / deepseek-chat / qwen-plus">
+              <button class="btn" id="btn_fetch_inspire_models" type="button">获取模型</button>
+            </div>
+            <div id="inspireFetchPanel" class="fetch-panel hide">
+              <div class="fetch-head">
+                <input id="ifv_filter" class="input" placeholder="过滤模型名称" aria-label="过滤模型名称">
+                <span class="hint num" id="ifv_count">0 个</span>
+              </div>
+              <div id="ifv_list" class="fetch-model-list"></div>
+              <div class="form-acts">
+                <span class="spacer"></span>
+                <button class="btn" id="ifv_close" type="button">取消</button>
+              </div>
+            </div>
+          </div>
           <span></span>
           <div class="form-acts">
             <button class="btn solid" id="btn_save_inspire_cfg" type="button">保存</button>
@@ -2406,6 +2439,60 @@ function fillInspireProviders(){
     sel.value = inspireCfg.provider;
   }
 }
+function hideInspireFetchPanel(){
+  $('inspireFetchPanel').classList.add('hide');
+  $('ifv_list').innerHTML = '';
+}
+function renderInspireFetchPanel(list){
+  const listEl = $('ifv_list');
+  listEl.innerHTML = '';
+  list.forEach(m => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'ifv-item';
+    b.textContent = m;
+    b.title = m;
+    b.onclick = () => {
+      $('cfg_inspire_model').value = m;
+      hideInspireFetchPanel();
+      showToast(`已填入 ${m}，点「保存」生效`, 'success');
+    };
+    listEl.appendChild(b);
+  });
+  $('ifv_filter').value = '';
+  $('ifv_count').textContent = `${list.length} 个`;
+  $('inspireFetchPanel').classList.remove('hide');
+}
+$('btn_fetch_inspire_models').onclick = async () => {
+  const pid = $('cfg_inspire_prov').value.trim();
+  if(!pid) return showToast('请先添加 OpenAI 兼容渠道', 'warning');
+  showToast('正在获取模型列表…', 'info');
+  try{
+    // 只传渠道 id：Base URL 和 Key 由服务端从已保存的渠道里取。
+    const r = await apiFetch('/api/fetch-models', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ provider_id: pid })
+    });
+    const d = await r.json().catch(() => ({}));
+    if(!r.ok) return showToast('获取失败：' + (d.error || r.status), 'error');
+    const list = d.models || [];
+    if(!list.length) return showToast('接口未返回任何可用模型', 'warning');
+    renderInspireFetchPanel(list);
+    showToast(`已获取 ${list.length} 个模型`, 'success');
+  }catch(e){ showToast('获取失败：' + e.message, 'error'); }
+};
+$('ifv_filter').addEventListener('input', () => {
+  const q = $('ifv_filter').value.trim().toLowerCase();
+  let n = 0;
+  document.querySelectorAll('#ifv_list .ifv-item').forEach(el => {
+    const hit = !q || el.textContent.toLowerCase().includes(q);
+    el.style.display = hit ? '' : 'none';
+    if(hit) n++;
+  });
+  $('ifv_count').textContent = `${n} 个`;
+});
+$('ifv_close').onclick = hideInspireFetchPanel;
+$('cfg_inspire_prov').addEventListener('change', hideInspireFetchPanel);
 $('btn_save_inspire_cfg').onclick = saveInspireCfg;
 $('btn_clear_inspire_cfg').onclick = () => {
   $('cfg_inspire_model').value = '';

@@ -161,6 +161,14 @@ class GenerationHTTPTests(unittest.TestCase):
         fixture = self
 
         class FakeUpstream(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                fixture.requests.append((self.path, dict(self.headers), None))
+                body = json.dumps({"data": [{"id": "gpt-4o-mini"}, {"id": "deepseek-chat"}]}).encode()
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
             def do_POST(self):
                 fixture.requests.append((self.path, dict(self.headers),
                     json.loads(self.rfile.read(int(self.headers["Content-Length"])))))
@@ -277,6 +285,22 @@ class GenerationHTTPTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(result["models"], ["image-01", "image-01-live"])
         self.assertEqual(result["source"], "preset")
+        self.assertEqual(self.requests, [])
+
+    def test_fetch_models_by_saved_provider_uses_stored_credentials(self):
+        provider = self.provider(api_type=None)
+        status, result = self.request("POST", "/api/fetch-models", {"provider_id": provider["id"]})
+        self.assertEqual(status, 200)
+        self.assertEqual(result["models"], ["deepseek-chat", "gpt-4o-mini"])
+        path, headers, body = self.requests[-1]
+        self.assertEqual(path, "/v1/models")
+        self.assertEqual(headers["Authorization"], "Bearer fake-test-key")
+        self.assertIsNone(body)
+
+    def test_fetch_models_unknown_provider_id_is_rejected(self):
+        status, error = self.request("POST", "/api/fetch-models", {"provider_id": "missing"})
+        self.assertEqual(status, 404)
+        self.assertIn("渠道不存在", error["error"])
         self.assertEqual(self.requests, [])
 
     def test_legacy_provider_without_type_still_uses_openai(self):

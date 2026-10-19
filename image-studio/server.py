@@ -1629,13 +1629,23 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if body is None:
             self._send(400, {"error": "请求解析失败"}); return
         api_type = body.get("api_type") or "openai"
+        base = (body.get("base") or "").strip().rstrip("/")
+        key = (body.get("key") or "").strip()
+        provider_id = (body.get("provider_id") or "").strip()
+        if provider_id:
+            # 设置页里已保存的渠道：由服务端取 Base URL 和 Key，
+            # 前端不必把密钥再传一遍。
+            prov = next((it for it in load_providers() if it.get("id") == provider_id), None)
+            if prov is None:
+                self._send(404, {"error": "渠道不存在或已被删除"}); return
+            api_type = prov.get("api_type") or "openai"
+            base = (prov.get("base") or "").strip().rstrip("/")
+            key = (prov.get("key") or "").strip()
         if api_type not in API_TYPES:
             self._send(400, {"error": "不支持的渠道接口类型"}); return
         if api_type == "minimax":
             # 官方图片接口未提供模型枚举端点，明确返回文档中的预设列表。
             self._send(200, {"models": list(MINIMAX_MODELS), "source": "preset"}); return
-        base = (body.get("base") or "").strip().rstrip("/")
-        key = (body.get("key") or "").strip()
         if not base:
             self._send(400, {"error": "缺少 Base URL"}); return
         # 这里只挡协议，不做 _validate_url 的私网 IP 拦截：
