@@ -693,6 +693,12 @@
   .search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font-size: 12.5px; }
   .gallery-grid { --row-h: 172px; display: flex; flex-wrap: wrap; gap: 6px; }
   .gallery-grid::after { content: ''; flex-grow: 999999; }
+  /* 分页截断时，最后一行不是图库真正的结尾：去掉占位，让这一行撑满，
+     否则会留下明显空白。全部加载完后恢复，末行按自然尺寸显示。 */
+  .gallery-grid.has-more::after { display: none; }
+  /* 撑满靠 flex-grow 分配宽度，但竖图（如 9:16）拿到的宽度会让高度暴涨，
+     整行被撑成一块巨图。限制最大行高，超出的部分按 cover 裁切。 */
+  .gallery-grid.has-more .tile { max-height: calc(var(--row-h) * 1.45); }
   .tile {
     position: relative;
     flex-grow: var(--r);
@@ -706,24 +712,28 @@
   .tile img { display: block; width: 100%; height: 100%; object-fit: cover; transition: transform .6s var(--ease); }
   .tile:hover img { transform: scale(1.02); }
   .tile.sel { outline: 1.5px solid var(--text); outline-offset: 2px; }
-  .tile-cap {
-    position: absolute;
-    inset: auto 0 0 0;
-    padding: 30px 10px 9px;
-    background: linear-gradient(transparent, rgba(0, 0, 0, .72));
-    color: #fff;
-    font-size: 12px;
-    line-height: 1.45;
-    display: -webkit-box;
-    -webkit-line-clamp: 3;
-    -webkit-box-orient: vertical;
+  .tile-tools { position: absolute; top: 6px; right: 6px; display: flex; gap: 4px; opacity: 0; transition: opacity .2s; }
+  .tile:hover .tile-tools, .tile:focus-within .tile-tools { opacity: 1; }
+  /* 悬停提示：显示完整提示词。放在格子外面，既不遮挡作品，
+     也不会被格子 3 行截断。用 fixed 定位避开任何 overflow 裁剪。 */
+  .tile-tip {
+    position: fixed;
+    z-index: 130;
+    max-width: min(380px, calc(100vw - 24px));
+    max-height: 46vh;
     overflow: hidden;
-    opacity: 0;
-    transition: opacity .2s;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+    background: var(--panel);
+    color: var(--text);
+    font-size: 12.5px;
+    line-height: 1.65;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, .26);
     pointer-events: none;
   }
-  .tile-tools { position: absolute; top: 6px; right: 6px; display: flex; gap: 4px; opacity: 0; transition: opacity .2s; }
-  .tile:hover .tile-cap, .tile:hover .tile-tools, .tile:focus-within .tile-tools { opacity: 1; }
   .tool-btn {
     width: 26px;
     height: 26px;
@@ -738,6 +748,7 @@
   }
   .tool-btn:hover { background: rgba(0, 0, 0, .78); }
   .tool-btn.del:hover { background: #d93f3c; }
+  .gallery-more { display: flex; justify-content: center; padding: 16px 0 4px; }
   .gallery-empty { width: 100%; padding: 48px 0; text-align: center; font-size: 13px; line-height: 1.8; color: var(--text-3); }
   .gallery-empty.error { color: var(--danger); }
   .gallery-empty.error span { color: var(--text-3); }
@@ -1303,6 +1314,9 @@
           </div>
         </header>
         <div class="gallery-grid" id="gallery"></div>
+        <div class="gallery-more hide" id="galleryMore">
+          <button class="btn" id="galleryMoreBtn" type="button">加载更多</button>
+        </div>
       </section>
     </div>
   </main>
@@ -1625,7 +1639,11 @@ function showView(v){
   if(location.hash !== '#' + v){
     try{ history.replaceState(null, '', '#' + v); }catch(_){}
   }
-  if(!isCfg) layoutStage();
+  if(!isCfg){
+    layoutStage();
+    // 在设置页里刷新图库时量不到行高，回到创作页后补算一次
+    if(galleryNeedsLayout) renderGallery(false);
+  }
 }
 $('brandBtn').onclick = () => showView('gen');
 $('openConfigBtn').onclick = () => showView('config');
@@ -2949,9 +2967,114 @@ function syncStage(){
   restoreStage();
 }
 
-function renderGallery(){
+/* 图库分页：默认只渲染 3 行，「加载更多」每次再加 2 行。
+   格子宽度随比例变化，每行能放几张并不固定，所以按实际布局测量行数，
+   而不是写死「每页 N 张」。 */
+const GALLERY_INITIAL_ROWS = 3;
+const GALLERY_MORE_ROWS = 2;
+let galleryShownRows = GALLERY_INITIAL_ROWS;
+let galleryNeedsLayout = false;      // 渲染时图库不可见（在设置页），回到创作页再重算
+
+/* 悬停提示：显示完整提示词。只有鼠标悬停或键盘聚焦时出现，
+   触屏设备（无 hover）不显示，点开作品后详情里本来就有全文。 */
+const tileTip = document.createElement('div');
+tileTip.className = 'tile-tip hide';
+tileTip.setAttribute('role', 'tooltip');
+document.body.appendChild(tileTip);
+
+// 滚动后内容会从指针下方滑过，浏览器会把新格子当作「刚移入」再次触发 hover。
+// 用「指针坐标是否真的变化」来判断：滚动产生的伪 hover 坐标不变，抑制；
+// 用户真的动了鼠标，坐标变了，照常显示。
+let tileTipScrollPos = null;
+
+function showTileTip(tile, it, ev){
+  if(window.matchMedia && window.matchMedia('(hover: none)').matches) return;
+  if(tileTipScrollPos){
+    // 键盘聚焦没有坐标，视为用户主动操作，不受滚动抑制影响
+    if(!ev){ tileTipScrollPos = null; }
+    else{
+      if(ev.clientX === tileTipScrollPos.x && ev.clientY === tileTipScrollPos.y) return;
+      tileTipScrollPos = null;
+    }
+  }
+  const text = it.prompt || '（无提示词）';
+  if(!text) return;
+  tileTip.textContent = text;
+  tileTip.classList.remove('hide');
+  const r = tile.getBoundingClientRect();
+  const tw = tileTip.offsetWidth, th = tileTip.offsetHeight;
+  const m = 12;
+  const left = Math.max(m, Math.min(r.left + r.width / 2 - tw / 2, window.innerWidth - tw - m));
+  let top = r.top - th - 8;                 // 默认放上方，不遮住作品
+  if(top < m) top = Math.min(window.innerHeight - th - m, r.bottom + 8);
+  tileTip.style.left = Math.round(left) + 'px';
+  tileTip.style.top = Math.round(Math.max(m, top)) + 'px';
+}
+function hideTileTip(){
+  tileTip.classList.add('hide');
+}
+
+function createTile(it){
+  const known = /^(\d+)x(\d+)$/.exec(it.size || '');
+  const ratio = ratioCache[it.id] || (known ? known[1] / known[2] : 1);
+  const tile = document.createElement('figure');
+  tile.className = 'tile';
+  tile.dataset.id = it.id;
+  tile.tabIndex = 0;
+  tile.style.setProperty('--r', ratio);
+  tile.innerHTML = `
+    <img src="${esc(thumbOf(it))}" loading="lazy" alt="">
+    <div class="tile-tools">
+      <button class="tool-btn zoom-btn" type="button" title="全屏查看">${ICON.expand}</button>
+      <a class="tool-btn" href="${esc(it.url)}" download="${esc(it.filename || 'image.png')}" title="下载">${ICON.download}</a>
+      <button class="tool-btn del del-btn" type="button" title="删除">${ICON.trash}</button>
+    </div>
+  `;
+  const img = tile.querySelector('img');
+  img.onload = () => {
+    if(!img.naturalWidth) return;
+    const r = img.naturalWidth / img.naturalHeight;
+    if(Math.abs(r - ratio) > 0.001){
+      tile.style.setProperty('--r', r);
+      rememberRatio(it.id, r);
+      // 比例修正会改变换行位置；分页时行数按布局裁剪，改完要重算一次，
+      // 否则末行会多出几张（或少了）。防抖，避免连续加载反复重排。
+      scheduleGalleryRecut();
+    }
+  };
+  tile.addEventListener('mouseenter', e => showTileTip(tile, it, e));
+  // 滚动收起提示后，指针在本格内移动也能重新唤出
+  tile.addEventListener('mousemove', e => { if(tileTip.classList.contains('hide')) showTileTip(tile, it, e); });
+  tile.addEventListener('mouseleave', hideTileTip);
+  tile.addEventListener('focus', () => showTileTip(tile, it));
+  tile.addEventListener('blur', hideTileTip);
+  tile.onclick = e => { if(!e.target.closest('.tile-tools')) selectTile(it); };
+  tile.onkeydown = e => {
+    if(e.target === tile && e.key === 'Enter'){
+      e.preventDefault();
+      selectTile(it);
+    }
+  };
+  tile.querySelector('.zoom-btn').onclick = e => { e.stopPropagation(); openLightboxByItem(it); };
+  tile.querySelector('.del-btn').onclick = e => { e.stopPropagation(); deleteGalleryItem(it.id); };
+  return tile;
+}
+
+function updateGalleryMore(shown, total){
+  const left = total - shown;
+  const wrap = $('galleryMore');
+  // 还有更多作品时最后一行是被截断的，要撑满；否则末行保持自然尺寸。
+  $('gallery').classList.toggle('has-more', left > 0);
+  if(left <= 0){ wrap.classList.add('hide'); return; }
+  $('galleryMoreBtn').textContent = `加载更多（还有 ${left} 张）`;
+  wrap.classList.remove('hide');
+}
+
+function renderGallery(resetRows){
   const grid = $('gallery');
   const q = ($('gFilter').value || '').trim().toLowerCase();
+  if(resetRows) galleryShownRows = GALLERY_INITIAL_ROWS;
+  hideTileTip();                       // 重排后旧格子已移除，提示必须跟着消失
   grid.innerHTML = '';
 
   const filtered = galleryList.filter(it => {
@@ -2964,49 +3087,73 @@ function renderGallery(){
   if(!filtered.length){
     visibleList = [];
     grid.innerHTML = `<div class="gallery-empty">${q ? '没有匹配的作品' : '还没有作品'}</div>`;
+    updateGalleryMore(0, 0);
     return;
   }
 
-  // 记住渲染顺序，供灯箱翻页使用
+  // 记住渲染顺序，供灯箱翻页使用（包含尚未渲染的条目，翻页逻辑不受分页影响）
   visibleList = filtered.slice().reverse();
 
-  visibleList.forEach(it => {
-    const known = /^(\d+)x(\d+)$/.exec(it.size || '');
-    const ratio = ratioCache[it.id] || (known ? known[1] / known[2] : 1);
-    const tile = document.createElement('figure');
-    tile.className = 'tile';
-    tile.dataset.id = it.id;
-    tile.tabIndex = 0;
-    tile.style.setProperty('--r', ratio);
-    tile.innerHTML = `
-      <img src="${esc(thumbOf(it))}" loading="lazy" alt="">
-      <figcaption class="tile-cap">${esc(it.prompt || '（无提示词）')}</figcaption>
-      <div class="tile-tools">
-        <button class="tool-btn zoom-btn" type="button" title="全屏查看">${ICON.expand}</button>
-        <a class="tool-btn" href="${esc(it.url)}" download="${esc(it.filename || 'image.png')}" title="下载">${ICON.download}</a>
-        <button class="tool-btn del del-btn" type="button" title="删除">${ICON.trash}</button>
-      </div>
-    `;
-    const img = tile.querySelector('img');
-    img.onload = () => {
-      if(!img.naturalWidth) return;
-      const r = img.naturalWidth / img.naturalHeight;
-      if(Math.abs(r - ratio) > 0.001) tile.style.setProperty('--r', r);
-      rememberRatio(it.id, r);
-    };
-    tile.onclick = e => { if(!e.target.closest('.tile-tools')) selectTile(it); };
-    tile.onkeydown = e => {
-      if(e.target === tile && e.key === 'Enter'){
-        e.preventDefault();
-        selectTile(it);
-      }
-    };
-    tile.querySelector('.zoom-btn').onclick = e => { e.stopPropagation(); openLightboxByItem(it); };
-    tile.querySelector('.del-btn').onclick = e => { e.stopPropagation(); deleteGalleryItem(it.id); };
-    grid.appendChild(tile);
-  });
+  // 图库在设置页里不可见时量不出布局，先按保守估计渲染，回到创作页再重算。
+  const measurable = grid.offsetParent !== null;
+  if(!measurable){
+    galleryNeedsLayout = true;
+    const count = Math.min(visibleList.length, galleryShownRows * 4);
+    for(let i = 0; i < count; i++) grid.appendChild(createTile(visibleList[i]));
+    updateGalleryMore(count, visibleList.length);
+    markSelectedTile();
+    return;
+  }
+  galleryNeedsLayout = false;
+
+  // 先全部渲染，再按最终布局裁到目标行数。边加边量的话，
+  // 页面滚动条出现/消失会改变每行能放几张，裁出来的行数不准。
+  visibleList.forEach(it => grid.appendChild(createTile(it)));
+
+  // 裁剪会改变页面高度，进而影响滚动条和每行容量，所以复检几轮直到稳定。
+  for(let pass = 0; pass < 6; pass++){
+    // 「还有更多」时末行要撑满；先按当前剩余数设置，再测量。
+    grid.classList.toggle('has-more', visibleList.length > grid.children.length);
+    const tiles = [...grid.children];
+    const rowTops = [];
+    tiles.forEach(t => { if(!rowTops.includes(t.offsetTop)) rowTops.push(t.offsetTop); });
+    if(rowTops.length <= galleryShownRows) break;
+    const cutTop = rowTops[galleryShownRows];   // 第 N+1 行的顶边
+    let cutting = false;
+    for(const t of tiles){
+      if(t.offsetTop >= cutTop) cutting = true;
+      if(cutting) t.remove();
+    }
+  }
+  updateGalleryMore(grid.children.length, visibleList.length);
   markSelectedTile();
 }
+
+// 图片加载后比例修正、窗口缩放都会改变换行位置，统一防抖重算行数
+let galleryRecutTimer = null;
+function scheduleGalleryRecut(){
+  clearTimeout(galleryRecutTimer);
+  galleryRecutTimer = setTimeout(() => {
+    const grid = $('gallery');
+    if(!grid || grid.offsetParent === null || !galleryList.length) return;
+    renderGallery(false);
+  }, 220);
+}
+
+$('galleryMoreBtn').onclick = () => {
+  galleryShownRows += GALLERY_MORE_ROWS;
+  renderGallery(false);
+};
+
+// 列数随窗口宽度变化，已加载的行数保持不变，重新按新布局截断
+window.addEventListener('resize', scheduleGalleryRecut);
+// 滚动时格子位置会变，提示收起；记住指针位置，指针没动就不重新弹出。
+let lastPointer = { x: -1, y: -1 };
+document.addEventListener('mousemove', e => { lastPointer = { x: e.clientX, y: e.clientY }; }, true);
+window.addEventListener('scroll', () => {
+  tileTipScrollPos = { ...lastPointer };
+  hideTileTip();
+}, true);
 
 /* 点击缩略图：在上方舞台查看；生成进行中则直接全屏查看，不打断进度展示 */
 function selectTile(it){
@@ -3024,7 +3171,7 @@ function markSelectedTile(){
   document.querySelectorAll('#gallery .tile').forEach(t => t.classList.toggle('sel', !!id && t.dataset.id === id));
 }
 
-$('gFilter').addEventListener('input', renderGallery);
+$('gFilter').addEventListener('input', () => renderGallery(true));
 $('refreshGalleryBtn').onclick = async () => {
   if(await loadGallery()) showToast('图库已刷新', 'info');
 };
