@@ -14,6 +14,8 @@ services:
       - DATA_DIR=/data
       # 对外访问地址；https 开头时登录 Cookie 只通过 HTTPS 发送
       # - PUBLIC_ORIGIN=https://img.example.com
+      # 渠道密钥加密主密钥：强烈建议设置，并与 ./data 分开保管（如 .env）
+      # - IMAGE_FANTASY_SECRET=${IMAGE_FANTASY_SECRET}
       # 反向代理经端口映射访问时，容器看到的来源是 Docker 网关，只采信这些地址转发的来源 IP
       - TRUSTED_PROXIES=172.16.0.0/12
     volumes:

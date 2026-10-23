@@ -4,13 +4,15 @@
 Image Fantasy —— 自托管图像生成 Web 应用（后端以 Python 标准库为主，缩略图可选依赖 Pillow）
 
 特性：
-  - 对接 OpenAI 兼容图像 API，以及 MiniMax 原生图片 API
+  - 对接 OpenAI 兼容图像 API、MiniMax 原生图片 API，以及 Vertex AI Gemini 出图
   - 全参数暴露：prompt / size / n / output_format / output_compression /
     response_format / watermark / prompt_extend(提示词润色) / 参考图编辑(edit)
     （尺寸等取值范围由前端控件约束，服务端不做二次校验，原样透传给上游）
   - GPT-Image 兼容参数(quality/style/background)透传 + 任意额外参数 JSON 透传
   - 供应商与模型管理：供应商（Base URL + Key + 模型清单）持久化在 data/providers.json，
     前端只需选择供应商与模型；生成请求由服务端注入凭据
+    Vertex 渠道额外保存 project_id；Location 写在 base（默认 global）；
+    Key 为服务账号 JSON 全文或 JSON 文件路径（也可用本机 ADC）
   - 实时进度：/api/generate 以 NDJSON 分块流式返回阶段事件
     （accepted → upstream → saving → done / error），前端可显示生成进度
   - 服务端图库持久化：生成的图像落盘到 data/images，索引存 data/gallery.json，
@@ -101,10 +103,19 @@ _PROXY_DNS_NETWORKS = (
 )
 _PROXY_DNS_TRUSTED_DOMAINS = ("aliyuncs.com",)
 
-API_TYPES = ("openai", "minimax")
+API_TYPES = ("openai", "minimax", "vertex")
 MINIMAX_MODELS = ("image-01", "image-01-live")
 MINIMAX_DEFAULT_BASE = "https://api.minimax.cn/v1"
 MINIMAX_ASPECT_RATIOS = ("1:1", "16:9", "4:3", "3:2", "2:3", "3:4", "9:16", "21:9")
+VERTEX_DEFAULT_LOCATION = "global"
+VERTEX_MODELS = (
+    "gemini-2.5-flash-image",
+)
+VERTEX_ASPECT_RATIOS = ("1:1", "16:9", "9:16", "3:2", "2:3", "4:3", "3:4", "4:5", "5:4", "21:9")
+VERTEX_SCOPES = ("https://www.googleapis.com/auth/cloud-platform",)
+# 测试可改写为本地假上游；生产保持 None，走官方 aiplatform 域名。
+VERTEX_API_ROOT = None
+_vertex_token_cache = {}
 RANDOM_IDEA_MAX_CHARS = 60
 
 # ---- 登录与会话 ----
@@ -585,21 +596,121 @@ def save_gallery(items):
         _atomic_write(GALLERY_FILE, data)
 
 
+SECRET_ENV = "IMAGE_FANTASY_SECRET"
+SECRET_FILE = os.path.join(DATA_DIR, "secret.key")
+ENC_PREFIX = "enc:v1:"
+_fernet_cache = [None]
+
+
+def _get_fernet():
+    """渠道密钥加密用的 Fernet。主密钥优先取环境变量，否则用 data/secret.key（自动生成，0600）。
+    未安装 cryptography 时返回 None（退回明文，启动时会有警告）。"""
+    if _fernet_cache[0] is not None:
+        return _fernet_cache[0]
+    try:
+        from cryptography.fernet import Fernet
+    except ImportError:
+        return None
+    secret = os.environ.get(SECRET_ENV, "").strip()
+    if secret:
+        material = hashlib.sha256(secret.encode("utf-8")).digest()
+    else:
+        if not os.path.isfile(SECRET_FILE):
+            os.makedirs(DATA_DIR, exist_ok=True)
+            try:
+                _create_private_exclusive(SECRET_FILE, secrets.token_urlsafe(48).encode("ascii"))
+            except FileExistsError:
+                pass
+        with open(SECRET_FILE, "rb") as f:
+            material = hashlib.sha256(f.read().strip()).digest()
+    _fernet_cache[0] = Fernet(base64.urlsafe_b64encode(material))
+    return _fernet_cache[0]
+
+
+def _encrypt_secret(value):
+    if not isinstance(value, str) or not value or value.startswith(ENC_PREFIX):
+        return value
+    f = _get_fernet()
+    if f is None:
+        return value
+    return ENC_PREFIX + f.encrypt(value.encode("utf-8")).decode("ascii")
+
+
+def _decrypt_secret(value):
+    if not isinstance(value, str) or not value.startswith(ENC_PREFIX):
+        return value
+    f = _get_fernet()
+    if f is None:
+        raise OSError("渠道密钥已加密，需要安装 cryptography：pip install cryptography")
+    try:
+        return f.decrypt(value[len(ENC_PREFIX):].encode("ascii")).decode("utf-8")
+    except Exception as e:
+        raise OSError(
+            "渠道密钥解密失败：主密钥（%s 或 data/secret.key）与加密时不一致" % SECRET_ENV
+        ) from e
+
+
 def load_providers():
     # 文件不存在 = 全新部署/首次启动，是正常状态（无供应商）
     if not os.path.isfile(PROVIDERS_FILE):
         return []
     try:
         with open(PROVIDERS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+            items = json.load(f)
     except Exception as e:
         raise OSError(f"供应商文件加载失败: {e}") from e
+    for it in items:
+        if isinstance(it, dict) and "key" in it:
+            it["key"] = _decrypt_secret(it["key"])
+    return items
 
 
 def save_providers(items):
-    data = json.dumps(items, ensure_ascii=False, indent=2).encode()
+    stored = []
+    for it in items:
+        it = dict(it)
+        if "key" in it:
+            it["key"] = _encrypt_secret(it["key"])
+        stored.append(it)
+    data = json.dumps(stored, ensure_ascii=False, indent=2).encode()
     with _lock:
-        _atomic_write(PROVIDERS_FILE, data)
+        _atomic_write_private(PROVIDERS_FILE, data)
+
+
+def public_provider(it):
+    """返回给浏览器的渠道视图：永远不含 key（API Key / 服务账号私钥），只带状态与提示。"""
+    out = {k: v for k, v in it.items() if k != "key"}
+    key = (it.get("key") or "").strip()
+    out["has_key"] = bool(key)
+    out["key_hint"] = ""
+    if it.get("api_type") == "vertex":
+        out["key_problem"] = ""
+        out["key_email"] = ""
+        try:
+            info = _vertex_service_account_info(key)
+            if info is None:
+                out["key_problem"] = "尚未配置服务账号 JSON"
+            else:
+                out["key_email"] = info.get("client_email") or ""
+        except ValueError as exc:
+            out["key_problem"] = str(exc)
+    elif key:
+        out["key_hint"] = ("…" + key[-4:]) if len(key) > 8 else "已保存"
+    return out
+
+
+def migrate_providers_encryption():
+    """启动时把旧的明文渠道密钥加密重写（无明文备份）；无事可做则不动文件。"""
+    if _get_fernet() is None:
+        print("警告：未安装 cryptography，渠道密钥以明文保存。pip install cryptography")
+        return
+    if not os.path.isfile(PROVIDERS_FILE):
+        return
+    with open(PROVIDERS_FILE, "r", encoding="utf-8") as f:
+        raw = json.load(f)
+    if any(isinstance(it, dict) and it.get("key") and not str(it["key"]).startswith(ENC_PREFIX) for it in raw):
+        save_providers(load_providers())
+        print("已将渠道密钥加密保存。")
 
 
 def ext_from_b64(b64):
@@ -728,12 +839,342 @@ def upstream_err_text(err, code):
     return msg.strip() or ("HTTP %s" % code)
 
 
-def build_image_request(api_type, base, model, mode, prompt, params, extra, image=None, mask=None):
+class _UrllibAuthResponse:
+    """google-auth 刷新令牌时期望的最小响应。"""
+
+    def __init__(self, status, data):
+        self.status = status
+        self.data = data
+
+
+class _UrllibAuthRequest:
+    """用标准库发令牌请求，避免再依赖 requests。"""
+
+    def __call__(self, url, method="GET", body=None, headers=None, timeout=None, **kwargs):
+        req = urllib.request.Request(
+            url, data=body, headers=dict(headers or {}), method=method
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return _UrllibAuthResponse(resp.status, resp.read())
+        except urllib.error.HTTPError as exc:
+            return _UrllibAuthResponse(exc.code, exc.read())
+
+
+def _import_google_auth():
+    try:
+        from google.oauth2 import service_account
+        import google.auth
+    except ImportError as exc:
+        raise ValueError(
+            "Vertex 渠道需要安装 google-auth：pip install google-auth"
+        ) from exc
+    return service_account, google.auth
+
+
+def _normalize_vertex_credential_dict(info):
+    """兼容标准 GCP 服务账号 JSON 与 CLIProxyAPI 等工具包装的 Vertex 凭据 JSON。"""
+    if not isinstance(info, dict):
+        raise ValueError("服务账号 JSON 必须是对象")
+    outer = info
+    for nested_key in ("service_account", "serviceAccount", "credentials"):
+        nested = outer.get(nested_key)
+        if isinstance(nested, str) and nested.strip().startswith("{"):
+            try:
+                nested = json.loads(nested)
+            except json.JSONDecodeError:
+                nested = None
+        if isinstance(nested, dict):
+            merged = dict(nested)
+            for fallback_k in ("project_id", "location"):
+                if not merged.get(fallback_k) and outer.get(fallback_k):
+                    merged[fallback_k] = outer[fallback_k]
+            if not merged.get("client_email"):
+                email = outer.get("client_email") or outer.get("email") or outer.get("account")
+                if email:
+                    merged["client_email"] = email
+            info = merged
+            break
+
+    kind = info.get("type")
+    # 识别 CLIProxyAPI 管理面板导出的「账号状态记录」（仅有统计信息与路径，不含 private_key）
+    if not info.get("private_key") and (
+        kind == "vertex" or info.get("provider") == "vertex"
+        or "auth_index" in info or "recent_requests" in info
+    ):
+        server_path = info.get("path") or info.get("id") or "/root/.cli-proxy-api/vertex-*.json"
+        raise ValueError(
+            "这份 JSON 是 CLIProxyAPI 管理面板的「账号状态记录」（仅含邮箱、项目 ID 和请求统计，"
+            "不含私钥 private_key，无法用于签名鉴权）。"
+            "请从服务器取出实际的密钥文件（如 %s），"
+            "或到 Google Cloud Console（IAM 和管理 → 服务账号 → 密钥）下载完整的服务账号 JSON。"
+            % server_path
+        )
+
+    # 兼容顶层 type="vertex" 但已包含 private_key 的导入文件
+    if kind == "vertex" and info.get("private_key"):
+        info = dict(info)
+        info["type"] = "service_account"
+        if not info.get("client_email"):
+            email = info.get("email") or info.get("account")
+            if email:
+                info["client_email"] = email
+        if not info.get("token_uri"):
+            info["token_uri"] = "https://oauth2.googleapis.com/token"
+
+    if isinstance(info.get("private_key"), str) and "\\n" in info["private_key"] and "\n" not in info["private_key"]:
+        info = dict(info)
+        info["private_key"] = info["private_key"].replace("\\n", "\n")
+    return info
+
+
+def _require_service_account(info):
+    """确认是可用的服务账号密钥，并对常见误传文件给出明确的中文原因。"""
+    info = _normalize_vertex_credential_dict(info)
+    kind = info.get("type")
+    if kind == "authorized_user":
+        raise ValueError(
+            "这是 gcloud 用户登录凭据，不是服务账号密钥。"
+            "请到 Cloud Console：IAM 和管理 → 服务账号 → 密钥 → 添加密钥 → JSON。"
+        )
+    if kind not in (None, "service_account"):
+        raise ValueError(
+            "这个 JSON 的 type 是 %s，不是服务账号密钥。"
+            "请到 Cloud Console：IAM 和管理 → 服务账号 → 密钥 → 添加密钥 → JSON。"
+            % kind
+        )
+    missing = [name for name in ("client_email", "token_uri", "private_key") if not info.get(name)]
+    if missing or kind != "service_account":
+        detail = "、".join(missing) if missing else "type"
+        raise ValueError(
+            "这个 JSON 不是完整的服务账号密钥，缺少 %s。"
+            "服务账号邮箱应类似 name@project.iam.gserviceaccount.com，"
+            "token_uri 一般为 https://oauth2.googleapis.com/token。"
+            "OAuth 客户端（client_id / client_secret）、面板状态记录和普通 API Key 都不能直接用于此模式。"
+            % detail
+        )
+    return info
+
+
+def _vertex_service_account_info(key):
+    """把渠道里的 Key 解析成服务账号 dict；支持 JSON 全文或本地文件路径。"""
+    raw = (key or "").strip()
+    if not raw:
+        return None
+    if raw.startswith("{"):
+        try:
+            info = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ValueError("服务账号 JSON 无法解析，请检查是否完整粘贴") from exc
+        return _require_service_account(info)
+    path = os.path.expanduser(raw)
+    if not os.path.isfile(path):
+        raise ValueError("服务账号文件不存在：%s" % path)
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            info = json.load(handle)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError("无法读取服务账号文件：%s" % exc) from exc
+    return _require_service_account(info)
+
+
+def vertex_access_token(key):
+    """用服务账号或 ADC 换取 access token，顺带返回凭据里的 project_id（若有）。"""
+    service_account, google_auth = _import_google_auth()
+    info = _vertex_service_account_info(key)
+    cache_key = hashlib.sha256((key or "\0adc").encode("utf-8")).hexdigest()
+    cached = _vertex_token_cache.get(cache_key)
+    now = time.time()
+    if cached and cached["expiry"] - 60 > now:
+        return cached["token"], cached.get("project_id")
+
+    project_id = None
+    if info is not None:
+        try:
+            credentials = service_account.Credentials.from_service_account_info(
+                info, scopes=VERTEX_SCOPES
+            )
+        except Exception as exc:
+            raise ValueError("服务账号私钥或格式无效：%s" % exc) from exc
+        project_id = (info.get("project_id") or "").strip() or None
+    else:
+        credentials, adc_project = google_auth.default(scopes=VERTEX_SCOPES)
+        project_id = (adc_project or "").strip() or None
+
+    try:
+        credentials.refresh(_UrllibAuthRequest())
+    except Exception as exc:
+        msg = str(exc)
+        if "invalid_grant" in msg:
+            raise ValueError("向 Google 换取令牌被拒绝（invalid_grant）：该服务账号密钥可能已被删除、吊销，或服务器时间偏差过大") from exc
+        raise ValueError("向 Google 换取访问令牌失败：%s" % msg) from exc
+    token = credentials.token
+    if not token:
+        raise ValueError("未能从 Google 凭据获取 access token")
+    expiry = now + 3500
+    if getattr(credentials, "expiry", None) is not None:
+        try:
+            expiry = credentials.expiry.timestamp()
+        except Exception:
+            pass
+    _vertex_token_cache[cache_key] = {
+        "token": token, "expiry": expiry, "project_id": project_id,
+    }
+    return token, project_id
+
+
+def vertex_model_url(project_id, location, model, action=None):
+    """拼 Vertex 发布商模型地址。action 为空时只读模型路径。"""
+    location = (location or VERTEX_DEFAULT_LOCATION).strip() or VERTEX_DEFAULT_LOCATION
+    project_id = (project_id or "").strip()
+    model = (model or "").strip()
+    if not project_id:
+        raise ValueError("Vertex 渠道需要填写 Project ID")
+    if not model:
+        raise ValueError("Vertex 渠道需要选择模型")
+    if VERTEX_API_ROOT:
+        root = VERTEX_API_ROOT.rstrip("/")
+    elif location == "global":
+        root = "https://aiplatform.googleapis.com"
+    else:
+        root = "https://%s-aiplatform.googleapis.com" % location
+    url = (
+        "%s/v1/projects/%s/locations/%s/publishers/google/models/%s"
+        % (root, urllib.parse.quote(project_id, safe=""),
+           urllib.parse.quote(location, safe=""), urllib.parse.quote(model, safe=".-_"))
+    )
+    if action:
+        url += ":" + action
+    return url, location, model
+
+
+def _is_vertex_imagen(model):
+    return (model or "").strip().lower().startswith("imagen")
+
+
+def vertex_endpoint(project_id, location, model):
+    action = "predict" if _is_vertex_imagen(model) else "generateContent"
+    url, _, _ = vertex_model_url(project_id, location, model, action)
+    return url
+
+
+def _format_vertex_error(err, code, project_id, location, model):
+    raw = upstream_err_text(err, code)
+    low = raw.lower()
+    if code == 401:
+        return "Google 拒绝了访问令牌（HTTP 401）：请检查服务账号密钥是否有效"
+    if code == 403:
+        if "service_disabled" in low or "has not been used in project" in low or "is disabled" in low:
+            return "GCP 项目「%s」尚未启用 Vertex AI API，请先在 Cloud Console 中启用 aiplatform.googleapis.com" % project_id
+        if "billing" in low:
+            return "GCP 项目「%s」尚未开启结算（Billing），请在 Cloud Console 绑定结算账号" % project_id
+        return "服务账号在项目「%s」中权限不足（HTTP 403）：请在 IAM 中为该账号授予「Vertex AI User (roles/aiplatform.user)」角色（详情：%s）" % (project_id, raw)
+    if code == 404:
+        hint = "Imagen 模型建议将 Location 设为 us-central1" if _is_vertex_imagen(model) else "Gemini 出图建议将 Location 设为 global"
+        return "在项目「%s」的「%s」区域未找到模型「%s」（%s）" % (project_id, location, model, hint)
+    return raw
+
+
+def check_vertex_account(key, project_id, location, model):
+    """换取 access token 并调用轻量 countTokens 验证项目、区域和模型权限，不调用生图、不产生生图计费。"""
+    token, inferred = vertex_access_token(key)
+    project_id = (project_id or inferred or "").strip()
+    target_model = (model or VERTEX_MODELS[0]).strip() or VERTEX_MODELS[0]
+    url, location, target_model = vertex_model_url(
+        project_id, location, target_model, "countTokens"
+    )
+    probe_body = json.dumps({
+        "contents": [{"role": "user", "parts": [{"text": "ping"}]}]
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=probe_body,
+        headers={
+            "Authorization": "Bearer " + token,
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        try:
+            err = json.loads(exc.read().decode("utf-8"))
+        except Exception:
+            err = None
+        # 部分纯 Imagen 模型不支持 countTokens，若返回 400 INVALID_ARGUMENT 说明鉴权、项目与模型路由已通过
+        if exc.code == 400 and _is_vertex_imagen(target_model) and isinstance(err, dict):
+            return {"ok": True, "project_id": project_id, "location": location, "model": target_model}
+        raise ValueError(_format_vertex_error(err, exc.code, project_id, location, target_model)) from exc
+    except urllib.error.URLError as exc:
+        raise ValueError("无法连接 Vertex：%s" % exc.reason) from exc
+    if not isinstance(body, dict):
+        raise ValueError("Vertex 返回了异常响应，请检查模型名和 Location")
+    return {"ok": True, "project_id": project_id, "location": location, "model": target_model}
+
+
+def build_image_request(api_type, base, model, mode, prompt, params, extra, image=None, mask=None,
+                        project_id=None):
     """把界面参数转换为渠道原生请求，返回 (endpoint, payload)。"""
     if api_type not in API_TYPES:
         raise ValueError("不支持的渠道接口类型")
     if not isinstance(extra, dict):
         raise ValueError("额外参数必须是 JSON 对象")
+    if api_type == "vertex":
+        if mode == "edit" or image or mask:
+            raise ValueError("Vertex 出图目前仅支持文生图，参考图稍后再接")
+        if not isinstance(prompt, str) or not prompt.strip():
+            raise ValueError("请输入提示词")
+        aspect = (params.get("aspect_ratio") or "").strip()
+        if aspect and aspect not in VERTEX_ASPECT_RATIOS:
+            raise ValueError("Vertex 不支持此画幅比例")
+        try:
+            count = max(1, int(params.get("n", 1) or 1))
+        except (ValueError, TypeError):
+            count = 1
+        if count != 1:
+            raise ValueError("Vertex Gemini 出图当前固定单张")
+        if _is_vertex_imagen(model):
+            parameters = {"sampleCount": count}
+            if aspect:
+                parameters["aspectRatio"] = aspect
+            payload = {
+                "instances": [{"prompt": prompt}],
+                "parameters": parameters,
+            }
+            for key, value in extra.items():
+                if not key or value in (None, ""):
+                    continue
+                if key == "parameters" and isinstance(value, dict):
+                    parameters.update(value)
+                elif key == "instances":
+                    payload[key] = value
+                else:
+                    parameters[key] = value
+        else:
+            generation = {
+                "responseModalities": ["TEXT", "IMAGE"],
+            }
+            if aspect:
+                generation["imageConfig"] = {"aspectRatio": aspect}
+            payload = {
+                "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+                "generationConfig": generation,
+            }
+            # 额外参数可覆盖 / 补充 generationConfig（例如 candidateCount）
+            for key, value in extra.items():
+                if not key or value in (None, ""):
+                    continue
+                if key == "generationConfig" and isinstance(value, dict):
+                    generation.update(value)
+                elif key in ("contents", "safetySettings", "systemInstruction", "labels"):
+                    payload[key] = value
+                else:
+                    generation[key] = value
+        endpoint = vertex_endpoint(project_id, base, model)
+        return endpoint, payload
+
     payload = {"model": model, "prompt": prompt}
     if api_type == "minimax":
         # 官方协议：https://platform.minimax.cn/docs/api-reference/image-generation-t2i
@@ -837,8 +1278,70 @@ def _validate_minimax_payload(payload, mode):
         raise ValueError("MiniMax 人物参考模式需要上传参考图")
 
 
+def _normalize_vertex_image_response(upstream):
+    if not isinstance(upstream, dict):
+        raise ValueError("Vertex 返回了无效的响应")
+    feedback = upstream.get("promptFeedback") or {}
+    block = feedback.get("blockReason") or feedback.get("block_reason")
+    if block:
+        raise ValueError("Vertex 拒绝了该提示词（%s），请调整后重试" % block)
+    error = upstream.get("error")
+    if isinstance(error, dict) and (error.get("message") or error.get("status")):
+        raise ValueError(upstream_err_text(upstream, error.get("code")))
+    predictions = upstream.get("predictions")
+    if isinstance(predictions, list):
+        items = []
+        for pred in predictions:
+            if not isinstance(pred, dict):
+                continue
+            data = pred.get("bytesBase64Encoded") or pred.get("b64_json")
+            if isinstance(data, str) and data.strip():
+                if data.startswith("data:image/"):
+                    data = data.split(",", 1)[-1]
+                items.append({"b64_json": data})
+        if not items:
+            raise ValueError("Vertex Imagen 未返回图片：可能触发了内容安全过滤，请调整提示词后重试")
+        return {**upstream, "data": items}
+    candidates = upstream.get("candidates")
+    if not isinstance(candidates, list) or not candidates:
+        raise ValueError("Vertex 未返回候选结果，请稍后重试")
+    items = []
+    finish_reasons = []
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        reason = candidate.get("finishReason") or candidate.get("finish_reason")
+        if reason:
+            finish_reasons.append(str(reason))
+        content = candidate.get("content") or {}
+        parts = content.get("parts") or []
+        if not isinstance(parts, list):
+            continue
+        for part in parts:
+            if not isinstance(part, dict):
+                continue
+            inline = part.get("inlineData") or part.get("inline_data") or {}
+            if not isinstance(inline, dict):
+                continue
+            data = inline.get("data")
+            if isinstance(data, str) and data.strip():
+                if data.startswith("data:image/"):
+                    data = data.split(",", 1)[-1]
+                items.append({"b64_json": data})
+    if not items:
+        if any(reason in ("SAFETY", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII")
+               for reason in finish_reasons):
+            raise ValueError("Vertex 未返回图片：内容安全检查未通过，请调整提示词后重试")
+        if finish_reasons:
+            raise ValueError("Vertex 未返回图片（%s）" % "/".join(finish_reasons))
+        raise ValueError("Vertex 未返回有效图片，请稍后重试")
+    return {**upstream, "data": items}
+
+
 def normalize_image_response(upstream, api_type):
     """将渠道响应归一为现有图库使用的 data 数组。"""
+    if api_type == "vertex":
+        return _normalize_vertex_image_response(upstream)
     if api_type != "minimax":
         return upstream
     if not isinstance(upstream, dict):
@@ -1285,9 +1788,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     self._send(500, {"error": str(e)})
                 return
             if p == "/api/providers":
-                # 含上游 API Key，任何缓存都不能保存
+                # 不含密钥，但仍禁止缓存
                 try:
-                    self._send(200, load_providers(), headers=no_store)
+                    self._send(200, [public_provider(it) for it in load_providers()], headers=no_store)
                 except Exception as e:
                     self._send(500, {"error": str(e)})
                 return
@@ -1382,6 +1885,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._create_provider(); return
         if p == "/api/fetch-models":
             self._fetch_models(); return
+        if p == "/api/vertex-check":
+            self._check_vertex(); return
         if p == "/api/inspire":
             self._generate_inspiration(); return
         if p != "/api/generate":
@@ -1410,7 +1915,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         base = (prov.get("base") or "").strip().rstrip("/")
         key = (prov.get("key") or "").strip()
         api_type = prov.get("api_type") or "openai"
-        if not base:
+        project_id = (prov.get("project_id") or "").strip()
+        if api_type == "vertex":
+            if not base:
+                base = VERTEX_DEFAULT_LOCATION
+        elif not base:
             self._send(400, {"error": "该供应商缺少 Base URL，请到供应商管理里补上。"}); return
         if not model:
             models = prov.get("models") or []
@@ -1421,15 +1930,23 @@ class Handler(http.server.BaseHTTPRequestHandler):
         try:
             if api_type == "minimax" and not key:
                 raise ValueError("MiniMax 渠道需要填写 API Key，请到渠道设置中补充")
+            auth_token = key
+            if api_type == "vertex":
+                token, inferred_project = vertex_access_token(key)
+                project_id = project_id or (inferred_project or "")
+                if not project_id:
+                    raise ValueError("Vertex 渠道需要填写 Project ID（或使用带 project_id 的服务账号）")
+                auth_token = token
             endpoint, payload = build_image_request(
-                api_type, base, model, mode, prompt, params, extra, data.get("image"), data.get("mask")
+                api_type, base, model, mode, prompt, params, extra,
+                data.get("image"), data.get("mask"), project_id=project_id,
             )
         except ValueError as exc:
             self._send(400, {"error": str(exc)}); return
         body = json.dumps(payload).encode("utf-8")
         hdrs = {"Content-Type": "application/json"}
-        if key:
-            hdrs["Authorization"] = "Bearer " + key
+        if auth_token:
+            hdrs["Authorization"] = "Bearer " + auth_token
         req = urllib.request.Request(endpoint, data=body, headers=hdrs, method="POST")
 
         # ---- 以下走 NDJSON 流式响应：阶段事件实时推送给前端 ----
@@ -1477,12 +1994,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 upstream = normalize_image_response(upstream, api_type)
                 items = upstream.get("data") or []
                 emit({"stage": "saving", "count": len(items)})
-                # MiniMax 不接受 output_format；按返回的真实图片内容确定后缀。
-                out_fmt = None if api_type == "minimax" else params.get("output_format")
+                # MiniMax / Vertex 不接受 output_format；按返回的真实图片内容确定后缀。
+                out_fmt = None if api_type in ("minimax", "vertex") else params.get("output_format")
                 size = params.get("size", "")
                 if api_type == "minimax":
                     size = payload.get("aspect_ratio") or (
                         "%sx%s" % (payload["width"], payload["height"]) if "width" in payload else "1:1"
+                    )
+                elif api_type == "vertex":
+                    size = (
+                        ((payload.get("generationConfig") or {}).get("imageConfig") or {}).get("aspectRatio")
+                        or (payload.get("parameters") or {}).get("aspectRatio")
+                        or "auto"
                     )
                 saved = []
                 # 取图与写盘都在锁外：按 URL 下载可能耗时数十秒，持锁会卡死整个应用。
@@ -1496,7 +2019,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         "thumb": thumb_url(filename),
                         "prompt": prompt, "model": model,
                         "size": size,
-                        "output_format": filename.rsplit(".", 1)[-1] if api_type == "minimax" else out_fmt or "",
+                        "output_format": (
+                            filename.rsplit(".", 1)[-1] if api_type in ("minimax", "vertex") else out_fmt or ""
+                        ),
                         "api_type": api_type,
                         "mode": mode, "created": int(time.time() * 1000),
                     })
@@ -1533,15 +2058,43 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except Exception:
             return None
 
-    def _provider_fields(self, body):
+    def _provider_fields(self, body, existing_key=None):
         name = (body.get("name") or "").strip()
         base = (body.get("base") or "").strip().rstrip("/")
         key = (body.get("key") or "").strip()
+        if not key and existing_key:
+            # 编辑时留空 = 保持已保存的密钥不变（浏览器从不拿到密钥，也就不会回传）
+            key = existing_key.strip()
+        project_id = (body.get("project_id") or "").strip()
         api_type = body.get("api_type") or "openai"
         if api_type not in API_TYPES:
-            raise ValueError("接口类型仅支持 OpenAI 兼容或 MiniMax 原生")
+            raise ValueError("接口类型仅支持 OpenAI 兼容、MiniMax 原生或 Vertex AI")
         if api_type == "minimax" and not base:
             base = MINIMAX_DEFAULT_BASE
+        if api_type == "vertex" and not base:
+            base = VERTEX_DEFAULT_LOCATION
+        if api_type == "vertex":
+            raw_location = (body.get("base") or "").strip().rstrip("/")
+            if key.startswith("{"):
+                try:
+                    parsed_key = json.loads(key)
+                except json.JSONDecodeError as exc:
+                    raise ValueError("服务账号 JSON 无法解析") from exc
+                info = _require_service_account(parsed_key)
+                key = json.dumps(info, ensure_ascii=False)
+                if not project_id:
+                    project_id = (info.get("project_id") or "").strip()
+                if not raw_location and info.get("location"):
+                    base = str(info.get("location")).strip()
+            else:
+                path = os.path.expanduser(key)
+                if not key or not os.path.isfile(path):
+                    raise ValueError("Vertex 渠道需要上传或粘贴有效的服务账号 JSON（若填服务器文件路径，请确认文件已存在）")
+                info = _vertex_service_account_info(key)
+                if not project_id:
+                    project_id = (info.get("project_id") or "").strip()
+                if not raw_location and info.get("location"):
+                    base = str(info.get("location")).strip()
         raw = body.get("models") or []
         if not isinstance(raw, list):
             raw = []
@@ -1550,18 +2103,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
             m = str(m).strip()
             if m and m not in seen:
                 seen.add(m); models.append(m)
-        return name, base, key, models, api_type
+        return name, base, key, models, api_type, project_id
 
     def _create_provider(self):
         body = self._read_json_body()
         if body is None:
             self._send(400, {"error": "请求解析失败"}); return
         try:
-            name, base, key, models, api_type = self._provider_fields(body)
+            name, base, key, models, api_type, project_id = self._provider_fields(body)
         except ValueError as exc:
             self._send(400, {"error": str(exc)}); return
         if not name or not base:
-            self._send(400, {"error": "名称和 Base URL 必填"}); return
+            self._send(400, {"error": "名称和接口地址（Vertex 为 Location）必填"}); return
         # 在锁内完成 读 -> 改 -> 写，避免并发修正
         with _lock:
             try:
@@ -1574,41 +2127,44 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 "api_type": api_type,
                 "models": models, "created": int(time.time() * 1000),
             }
+            if api_type == "vertex":
+                prov["project_id"] = project_id
             items.append(prov)
-            data = json.dumps(items, ensure_ascii=False, indent=2).encode()
-            _atomic_write(PROVIDERS_FILE, data)
-            self._send(200, prov)
+            save_providers(items)
+            self._send(200, public_provider(prov))
 
     def _update_provider(self, pid):
         body = self._read_json_body()
         if body is None:
             self._send(400, {"error": "请求解析失败"}); return
-        try:
-            name, base, key, models, api_type = self._provider_fields(body)
-        except ValueError as exc:
-            self._send(400, {"error": str(exc)}); return
         # 在锁内完成 读 -> 改 -> 写，避免并发修正
         with _lock:
             try:
                 items = load_providers()
             except Exception as e:
                 self._send(500, {"error": f"供应商读取失败: {e}"}); return
-            found = None
-            for it in items:
-                if it.get("id") == pid:
-                    if name: it["name"] = name
-                    if base: it["base"] = base
-                    it["key"] = key
-                    it["models"] = models
-                    if "api_type" in body:
-                        it["api_type"] = api_type
-                    found = it
-                    break
+            found = next((it for it in items if it.get("id") == pid), None)
             if found is None:
                 self._send(404, {"error": "供应商不存在"}); return
-            data = json.dumps(items, ensure_ascii=False, indent=2).encode()
-            _atomic_write(PROVIDERS_FILE, data)
-            self._send(200, found)
+            try:
+                name, base, key, models, api_type, project_id = self._provider_fields(
+                    body, existing_key=found.get("key") or ""
+                )
+            except ValueError as exc:
+                self._send(400, {"error": str(exc)}); return
+            it = found
+            if name: it["name"] = name
+            if base: it["base"] = base
+            it["key"] = key
+            it["models"] = models
+            if "api_type" in body:
+                it["api_type"] = api_type
+            if api_type == "vertex" or it.get("api_type") == "vertex":
+                it["project_id"] = project_id
+            elif "project_id" in it and api_type != "vertex":
+                it.pop("project_id", None)
+            save_providers(items)
+            self._send(200, public_provider(found))
 
     def _delete_provider(self, pid):
         # 在锁内完成 读 -> 改 -> 写，避免并发修正
@@ -1620,9 +2176,33 @@ class Handler(http.server.BaseHTTPRequestHandler):
             new_items = [it for it in items if it.get("id") != pid]
             if len(new_items) == len(items):
                 self._send(404, {"error": "供应商不存在"}); return
-            data = json.dumps(new_items, ensure_ascii=False, indent=2).encode()
-            _atomic_write(PROVIDERS_FILE, data)
+            save_providers(new_items)
             self._send(200, {"ok": True})
+
+    def _check_vertex(self):
+        body = self._read_json_body()
+        if body is None:
+            self._send(400, {"error": "请求解析失败"}); return
+        key = (body.get("key") or "").strip()
+        provider_id = (body.get("provider_id") or "").strip()
+        if not key and provider_id:
+            try:
+                prov = next((it for it in load_providers() if it.get("id") == provider_id), None)
+            except Exception as e:
+                self._send(500, {"error": f"供应商读取失败: {e}"}); return
+            if prov is None:
+                self._send(404, {"error": "渠道不存在或已被删除"}); return
+            key = (prov.get("key") or "").strip()
+        try:
+            result = check_vertex_account(
+                key,
+                body.get("project_id") or "",
+                body.get("base") or body.get("location") or "",
+                body.get("model") or "",
+            )
+        except ValueError as exc:
+            self._send(400, {"error": str(exc)}); return
+        self._send(200, result)
 
     def _fetch_models(self):
         body = self._read_json_body()
@@ -1646,6 +2226,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if api_type == "minimax":
             # 官方图片接口未提供模型枚举端点，明确返回文档中的预设列表。
             self._send(200, {"models": list(MINIMAX_MODELS), "source": "preset"}); return
+        if api_type == "vertex":
+            self._send(200, {"models": list(VERTEX_MODELS), "source": "preset"}); return
         if not base:
             self._send(400, {"error": "缺少 Base URL"}); return
         # 这里只挡协议，不做 _validate_url 的私网 IP 拦截：
@@ -1701,8 +2283,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             prov = load_providers()[0]
         if prov is None:
             self._send(400, {"error": "未找到可用的供应商渠道"}); return
-        if prov.get("api_type") == "minimax":
-            self._send(400, {"error": "此渠道用于 MiniMax 图片生成，请为灵感功能选择 OpenAI 兼容的文本模型渠道"}); return
+        if prov.get("api_type") in ("minimax", "vertex"):
+            self._send(400, {"error": "此渠道用于图片生成，请为灵感功能选择 OpenAI 兼容的文本模型渠道"}); return
 
         base = (prov.get("base") or "").strip().rstrip("/")
         key = (prov.get("key") or "").strip()
@@ -1810,6 +2392,7 @@ class ThreadingHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
 
 if __name__ == "__main__":
     os.chdir(BASE_DIR)
+    migrate_providers_encryption()
     with ThreadingHTTPServer((HOST, PORT), Handler) as httpd:
         shown = "127.0.0.1" if HOST in ("127.0.0.1", "localhost") else HOST
         print("Image Fantasy 已启动 ->  http://%s:%d" % (shown, PORT))

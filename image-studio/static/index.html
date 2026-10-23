@@ -810,8 +810,24 @@
   .field-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
   .inline { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
   .inline .input { flex: 1; min-width: 160px; width: auto; }
-  .hint { font-size: 12px; color: var(--text-3); }
+  .hint { font-size: 12px; color: var(--text-3); line-height: 1.55; }
   .hint.on { color: var(--ok); }
+  .hint.err { color: var(--danger); }
+  .hint.warn { color: var(--warn); }
+  .sa-box {
+    padding: 10px 12px;
+    border-radius: var(--r-sm);
+    background: var(--field);
+    border: 1px dashed var(--line-2);
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--text-2);
+    word-break: break-all;
+    transition: border-color .15s, background .15s;
+  }
+  .sa-box.dragging { border-style: solid; border-color: var(--text); background: var(--field-hover); }
+  .sa-box.on { border-style: solid; border-color: rgba(111, 191, 134, .35); color: var(--ok); }
+  .sa-box.err { border-style: solid; border-color: rgba(239, 100, 97, .4); color: var(--danger); }
   .form-acts { display: flex; align-items: center; gap: 8px; }
   .form-acts .spacer { flex: 1; }
   .chk-label {
@@ -1336,7 +1352,7 @@
       <div class="cfg-sec-head">
         <div>
           <h2 class="cfg-sec-title">图像渠道</h2>
-          <p class="cfg-sec-desc">支持 OpenAI 兼容接口与 MiniMax 原生接口。</p>
+          <p class="cfg-sec-desc">支持 OpenAI 兼容、MiniMax 原生与 Vertex AI Gemini 出图。</p>
         </div>
         <button class="btn" id="addProvBtn" type="button">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
@@ -1355,18 +1371,37 @@
           <select id="pv_type" class="select">
             <option value="openai">OpenAI 兼容</option>
             <option value="minimax">MiniMax 原生</option>
+            <option value="vertex">Vertex AI</option>
           </select>
           <p id="pv_type_hint" class="hint">适用于 OpenAI 兼容的图片接口与代理渠道。</p>
         </div>
         <label for="pv_name">名称</label>
         <input id="pv_name" class="input" placeholder="如 TokenRhythm / Vtry">
-        <label for="pv_base" id="pv_base_label">接口地址</label>
-        <input id="pv_base" class="input mono" placeholder="https://api.example.com/v1">
-        <label for="pv_key">API Key</label>
-        <div class="inline">
+        <label for="pv_key" id="pv_key_label">API Key</label>
+        <div class="inline" id="pv_key_row">
           <input id="pv_key" type="password" class="input mono" placeholder="sk-..." autocomplete="off">
           <label class="chk-label"><input type="checkbox" id="pv_showkey">显示</label>
         </div>
+        <div class="field-col hide" id="pv_sa_row">
+          <div class="inline">
+            <button class="btn" id="pv_sa_pick" type="button">选择 JSON 文件</button>
+            <button class="btn" id="pv_sa_paste_btn" type="button">粘贴 JSON / 路径</button>
+            <button class="btn" id="pv_sa_check" type="button">验证连接</button>
+          </div>
+          <div class="sa-box" id="pv_sa_status">点击「选择 JSON 文件」、将 .json 拖入此处，或点「粘贴 JSON / 路径」直接填入（将自动解析 Project ID）。</div>
+          <div class="field-col hide" id="pv_sa_paste_wrap">
+            <textarea id="pv_sa_text" class="input textarea mono" rows="4" placeholder='粘贴包含 private_key 的服务账号 JSON 全文，或填写服务器上的 JSON 文件路径（如 /root/.cli-proxy-api/vertex-xxx.json）'></textarea>
+            <div class="inline">
+              <button class="btn solid" id="pv_sa_apply_text" type="button">解析并应用</button>
+              <button class="btn" id="pv_sa_close_text" type="button">收起</button>
+            </div>
+          </div>
+          <input id="pv_sa_file" class="visually-hidden" type="file" accept=".json,application/json" tabindex="-1">
+        </div>
+        <label for="pv_project" id="pv_project_label" class="hide">Project ID</label>
+        <input id="pv_project" class="input mono hide" placeholder="上传 JSON 后自动填入，也可手动指定" autocomplete="off">
+        <label for="pv_base" id="pv_base_label">接口地址</label>
+        <input id="pv_base" class="input mono" placeholder="https://api.example.com/v1">
         <label for="pv_models" class="top">模型</label>
         <div class="field-col">
           <textarea id="pv_models" class="input textarea mono" placeholder="gpt-image-2&#10;qwen-image-3.0&#10;sensenova-u1.5-lite"></textarea>
@@ -1532,6 +1567,14 @@ const MINIMAX_SIZES = {
   '1:1': '1024×1024', '16:9': '1280×720', '4:3': '1152×864', '3:2': '1248×832',
   '2:3': '832×1248', '3:4': '864×1152', '9:16': '720×1280', '21:9': '1344×576'
 };
+const VERTEX_DEFAULT_LOCATION = 'global';
+const VERTEX_MODELS = [
+  'gemini-2.5-flash-image',
+  'gemini-2.0-flash-preview-image-generation',
+  'imagen-4.0-generate-001',
+  'imagen-4.0-fast-generate-001',
+  'imagen-3.0-generate-002'
+];
 const KBD_GO = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘ ↵' : 'Ctrl ↵';
 
 const svgIcon = (body, size = 14) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
@@ -1544,37 +1587,69 @@ const ICON = {
   trash: svgIcon('<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>')
 };
 
+function selectedProvider(){
+  return providers.find(p => p.id === $('selProvider').value) || null;
+}
 function isMiniMax(){
-  return providers.some(p => p.id === $('selProvider').value && p.api_type === 'minimax');
+  return !!(selectedProvider() && selectedProvider().api_type === 'minimax');
+}
+function isVertex(){
+  return !!(selectedProvider() && selectedProvider().api_type === 'vertex');
+}
+function isRatioChannel(){
+  return isMiniMax() || isVertex();
 }
 function apiTypeName(p){
-  return p && p.api_type === 'minimax' ? 'MiniMax 原生' : 'OpenAI 兼容';
+  if(p && p.api_type === 'minimax') return 'MiniMax 原生';
+  if(p && p.api_type === 'vertex') return 'Vertex AI';
+  return 'OpenAI 兼容';
 }
 
 function updateChannelUI(){
-  const mini = isMiniMax(), live = mini && $('selModel').value === 'image-01-live';
-  $('channelHint').classList.toggle('hide', !mini);
-  $('channelHint').textContent = '支持文生图和单人人物参考；参考图须为 PNG / JPEG，且小于 10 MB。';
-  $('maskGroup').classList.toggle('hide', mini);
+  const mini = isMiniMax(), vertex = isVertex(), ratioOnly = mini || vertex;
+  const live = mini && $('selModel').value === 'image-01-live';
+  const curProv = selectedProvider();
+  const vertexDiag = vertex && curProv ? storedVertexDiag(curProv) : null;
+  $('channelHint').classList.toggle('hide', !mini && !vertex);
+  $('channelHint').classList.toggle('err', !!(vertexDiag && !vertexDiag.ok));
+  $('channelHint').textContent = vertex
+    ? (vertexDiag && !vertexDiag.ok
+      ? `⚠ 当前渠道凭据不可用：${vertexDiag.error}（请点右上角齿轮进入「设置」重新配置）`
+      : 'Vertex AI 出图：当前支持文生图；Gemini 出图 Location 推荐 global，Imagen 推荐 us-central1。')
+    : '支持文生图和单人人物参考；参考图须为 PNG / JPEG，且小于 10 MB。';
+  $('maskGroup').classList.toggle('hide', ratioOnly || vertex);
+  // Vertex 第一期仅文生图：隐藏添加参考图按钮；若已挂参考图则提示用户去掉。
+  $('attachBtn').classList.toggle('hide', vertex);
+  if(vertex && $('imgFile').files[0]){
+    setAttachment('img', null);
+  }
   $('imgFile').accept = mini ? 'image/png,image/jpeg' : 'image/*';
   ['p_format', 'p_quality', 'p_style', 'p_background', 'p_comp'].forEach(id => {
-    $(id).disabled = mini;
-    $(id).closest('.form-group').classList.toggle('hide', mini);
+    $(id).disabled = ratioOnly;
+    $(id).closest('.form-group').classList.toggle('hide', ratioOnly);
   });
+  // Vertex 无水印 / 智能润色开关对应字段
+  const wmRow = $('wmSwitch') && $('wmSwitch').closest('.row');
+  const peRow = $('peChips') && $('peChips').closest('.row');
+  if(wmRow) wmRow.classList.toggle('hide', vertex);
+  if(peRow) peRow.classList.toggle('hide', vertex);
   document.querySelectorAll('.advanced-content > .form-row-2').forEach(row => {
     if(row.id !== 'minimaxStyleGroup'){
       row.classList.toggle('hide', [...row.children].every(group => group.classList.contains('hide')));
     }
   });
   $('minimaxStyleGroup').classList.toggle('hide', !live);
-  $('sizeHint').classList.toggle('hide', !mini);
-  $('sizeHint').textContent = live
-    ? 'image-01-live 使用预设画幅；自动为 1024 × 1024。'
-    : 'MiniMax 按所选画幅的预设尺寸生成；自定义宽高须为 512～2048，且为 8 的倍数。';
+  $('sizeHint').classList.toggle('hide', !ratioOnly);
+  $('sizeHint').textContent = vertex
+    ? 'Vertex 使用画幅比例；不支持自定义像素宽高。'
+    : (live
+      ? 'image-01-live 使用预设画幅；自动为 1024 × 1024。'
+      : 'MiniMax 按所选画幅的预设尺寸生成；自定义宽高须为 512～2048，且为 8 的倍数。');
   $('p_size').placeholder = mini ? '宽x高：8 的倍数，如 1024x1024' : '宽x高：32 的倍数，如 2048x1152';
   document.querySelectorAll('#ratioGrid .ratio-card').forEach(card => {
-    const unavailable = (card.dataset.minimax && !mini)
-      || (mini && card.dataset.v === '4096x4096')
+    const unavailable = (card.dataset.minimax && !ratioOnly)
+      || (ratioOnly && card.dataset.v === '4096x4096')
+      || (vertex && card.dataset.v === 'custom')
       || (live && ['custom', '21:9'].includes(card.dataset.v));
     card.classList.toggle('hide', !!unavailable);
     if(unavailable && card.classList.contains('active')) selectRatio('auto');
@@ -1742,7 +1817,9 @@ function updateRatioMeta(){
   const v = card ? card.dataset.v : 'auto';
   let text = '由模型决定';
   if(v === 'custom') text = $('p_size').value.trim() || '输入宽 × 高';
-  else if(isMiniMax() && card && card.dataset.ratio) text = MINIMAX_SIZES[card.dataset.ratio];
+  else if(isRatioChannel() && card && card.dataset.ratio){
+    text = isMiniMax() ? (MINIMAX_SIZES[card.dataset.ratio] || card.dataset.ratio) : card.dataset.ratio;
+  }
   else if(/^\d+x\d+$/.test(v)) text = v;
   $('ratioMeta').textContent = text.replace(/\s*[x×]\s*/, ' × ');
 }
@@ -1799,7 +1876,7 @@ document.querySelectorAll('#peChips button').forEach(b => {
 // 折叠时在右侧概括当前的高级设置
 function updateAdvancedMeta(){
   const parts = [];
-  if(!isMiniMax() && $('p_format').value) parts.push($('p_format').value.toUpperCase());
+  if(!isRatioChannel() && $('p_format').value) parts.push($('p_format').value.toUpperCase());
   const resp = $('p_resp').value;
   parts.push(resp === 'url' ? 'URL' : resp === 'b64_json' ? 'Base64' : '默认返回');
   if($('p_extra').value.trim()) parts.push('透传参数');
@@ -2189,12 +2266,19 @@ function renderProviderList(){
     row.className = 'item';
     row.dataset.id = p.id;
     const count = (p.models || []).length;
+    const vDiag = p.api_type === 'vertex' ? storedVertexDiag(p) : null;
+    const sideNote = !p.has_key
+      ? ' · 未填 Key'
+      : (vDiag && !vDiag.ok ? ' · <span style="color:var(--danger)">凭据不可用，需重配</span>' : '');
+    const subUrl = p.api_type === 'vertex'
+      ? `${p.base || 'global'}${p.project_id ? ' · ' + p.project_id : ''}`
+      : p.base;
     row.innerHTML = `
       <div class="item-main">
         <div class="item-name"><span>${esc(p.name)}</span><span class="tag">${apiTypeName(p)}</span></div>
-        <div class="item-url">${esc(p.base)}</div>
+        <div class="item-url">${esc(subUrl)}</div>
       </div>
-      <span class="item-side">${count} 个模型${p.key ? '' : ' · 未填 Key'}</span>
+      <span class="item-side">${count} 个模型${sideNote}</span>
       <button class="tbtn" type="button">${editingId === p.id ? '收起' : '编辑'}</button>
     `;
     row.querySelector('button').onclick = () => editingId === p.id ? closeProvEditor() : openProvEditor(p);
@@ -2211,10 +2295,16 @@ function openProvEditor(p){
     editingId = p.id;
     $('pv_name').value = p.name || '';
     $('pv_base').value = p.base || '';
-    $('pv_key').value = p.key || '';
+    $('pv_project').value = p.project_id || '';
+    // 密钥永远不会下发到浏览器：输入框留空 = 保持已保存的密钥不变
+    $('pv_key').value = '';
+    vertexSaKey = '';
     $('pv_models').value = (p.models || []).join('\n');
     $('pv_type').value = p.api_type || 'openai';
     updateProviderForm();
+    $('pv_key').placeholder = p.has_key
+      ? `已保存${p.key_hint ? '（' + p.key_hint + '）' : ''}，留空则保持不变`
+      : 'sk-...（可留空）';
     $('formTitle').textContent = '编辑渠道：' + p.name;
     $('pv_save').textContent = '保存修改';
     $('pv_delete').classList.remove('hide');
@@ -2231,7 +2321,11 @@ function closeProvEditor(){
 }
 function resetProvForm(){
   editingId = null;
-  ['pv_name', 'pv_base', 'pv_key', 'pv_models'].forEach(id => { $(id).value = ''; });
+  ['pv_name', 'pv_base', 'pv_key', 'pv_project', 'pv_models', 'pv_sa_text'].forEach(id => { if($(id)) $(id).value = ''; });
+  vertexSaKey = '';
+  vertexLastError = '';
+  $('pv_sa_file').value = '';
+  $('pv_sa_paste_wrap').classList.add('hide');
   $('pv_type').value = 'openai';
   updateProviderForm();
   $('formTitle').textContent = '添加渠道';
@@ -2249,39 +2343,339 @@ $('pv_delete').onclick = () => {
 };
 $('pv_showkey').onchange = () => { $('pv_key').type = $('pv_showkey').checked ? 'text' : 'password'; };
 
+let vertexSaKey = '';
+let vertexLastError = '';
+
+function storedProv(){ return editingId ? providers.find(x => x.id === editingId) : null; }
+function storedVertexDiag(p){
+  if(!p || !p.has_key) return { ok: false, empty: true, error: '尚未配置服务账号 JSON' };
+  if(p.key_problem) return { ok: false, error: p.key_problem };
+  return { ok: true, stored: true, email: p.key_email || '', project_id: p.project_id || '' };
+}
+
+function inspectVertexAccount(raw){
+  const text = String(raw || '').trim();
+  if(!text) return { ok: false, empty: true, error: '尚未配置服务账号 JSON' };
+  if(!text.startsWith('{')){
+    if(text.startsWith('/') || text.startsWith('~/')){
+      return { ok: true, isPath: true, path: text, normalized: text };
+    }
+    return { ok: false, error: '不是有效的 JSON 内容（也不是以 / 开头的服务器文件路径）' };
+  }
+  let outer;
+  try{ outer = JSON.parse(text); }
+  catch(_){ return { ok: false, error: 'JSON 语法无法解析，请检查是否完整复制' }; }
+  if(!outer || typeof outer !== 'object' || Array.isArray(outer)){
+    return { ok: false, error: '服务账号 JSON 必须是对象' };
+  }
+  let info = outer;
+  let unwrapped = false;
+  for(const k of ['service_account', 'serviceAccount', 'credentials']){
+    let nested = outer[k];
+    if(typeof nested === 'string' && nested.trim().startsWith('{')){
+      try{ nested = JSON.parse(nested); }catch(_){ nested = null; }
+    }
+    if(nested && typeof nested === 'object' && !Array.isArray(nested)){
+      info = Object.assign({}, nested);
+      if(!info.project_id && outer.project_id) info.project_id = outer.project_id;
+      if(!info.location && outer.location) info.location = outer.location;
+      if(!info.client_email && (outer.client_email || outer.email || outer.account)){
+        info.client_email = outer.client_email || outer.email || outer.account;
+      }
+      unwrapped = true;
+      break;
+    }
+  }
+  if(!info.private_key && (
+    info.type === 'vertex' || info.provider === 'vertex'
+    || 'auth_index' in info || 'recent_requests' in info
+  )){
+    const srvPath = info.path || info.id || '/root/.cli-proxy-api/vertex-*.json';
+    return {
+      ok: false,
+      isCliProxyStatus: true,
+      serverPath: srvPath,
+      project_id: info.project_id || '',
+      email: info.email || info.account || '',
+      error: `这是 CLIProxyAPI 管理面板的「账号状态记录」（仅含邮箱与调用统计，不含私钥 private_key）。请从服务器取出真正的密钥文件（路径：${srvPath}），或从 Google Cloud Console（IAM → 服务账号 → 密钥）下载服务账号 JSON。`
+    };
+  }
+  if(info.type === 'vertex' && info.private_key){
+    info = Object.assign({}, info, {
+      type: 'service_account',
+      client_email: info.client_email || info.email || info.account || '',
+      token_uri: info.token_uri || 'https://oauth2.googleapis.com/token'
+    });
+    unwrapped = true;
+  }
+  if(typeof info.private_key === 'string' && info.private_key.includes('\\n') && !info.private_key.includes('\n')){
+    info = Object.assign({}, info, { private_key: info.private_key.replace(/\\n/g, '\n') });
+  }
+  if(info.type === 'authorized_user'){
+    return {
+      ok: false,
+      error: '这是 gcloud 用户登录凭据（authorized_user），不是服务账号密钥。请到 Cloud Console 的「IAM 和管理 → 服务账号 → 密钥」下载 JSON。'
+    };
+  }
+  const missing = ['client_email', 'token_uri', 'private_key'].filter(name => !info[name]);
+  if(info.type !== 'service_account' || missing.length){
+    return {
+      ok: false,
+      error: info.type && info.type !== 'service_account'
+        ? `这个 JSON 的 type 是 ${info.type}，不是服务账号密钥（缺少 private_key）。`
+        : `这个 JSON 不是完整的服务账号密钥，缺少 ${missing.join('、')}。`
+    };
+  }
+  return {
+    ok: true,
+    info,
+    unwrapped,
+    email: info.client_email,
+    project_id: info.project_id || '',
+    location: info.location || outer.location || '',
+    normalized: JSON.stringify(info)
+  };
+}
+
+function refreshVertexAccountStatus(){
+  const status = $('pv_sa_status');
+  status.classList.remove('on', 'err');
+  status.removeAttribute('title');
+  if(vertexLastError){
+    status.textContent = '⚠ ' + vertexLastError;
+    status.classList.add('err');
+    return;
+  }
+  const sp = storedProv();
+  if(!vertexSaKey && sp && sp.api_type === 'vertex' && sp.has_key){
+    const sd = storedVertexDiag(sp);
+    if(!sd.ok){
+      status.textContent = '⚠ 当前保存的凭据不可用：' + sd.error;
+      status.classList.add('err');
+    } else {
+      status.textContent = ['✓ 已保存服务账号（私钥不会显示）', sd.email, sd.project_id ? `项目 ${sd.project_id}` : '']
+        .filter(Boolean).join(' · ') + ' · 不重新上传则保持不变';
+      status.classList.add('on');
+    }
+    return;
+  }
+  if(!vertexSaKey){
+    status.textContent = '点击「选择 JSON 文件」、将 .json 拖入此处，或点「粘贴 JSON / 路径」直接填入（将自动解析 Project ID）。';
+    return;
+  }
+  const diag = inspectVertexAccount(vertexSaKey);
+  if(!diag.ok){
+    status.textContent = '⚠ 当前保存的凭据不可用：' + diag.error;
+    status.classList.add('err');
+    return;
+  }
+  if(diag.isPath){
+    status.textContent = `✓ 已指定服务器密钥文件路径：${diag.path}`;
+    status.classList.add('on');
+    return;
+  }
+  const parts = ['✓ 服务账号密钥就绪'];
+  if(diag.unwrapped) parts[0] = '✓ 已提取服务账号密钥';
+  if(diag.email) parts.push(diag.email);
+  if(diag.project_id) parts.push(`项目 ${diag.project_id}`);
+  status.textContent = parts.join(' · ');
+  status.title = diag.email || '';
+  status.classList.add('on');
+}
+
+function applyVertexAccount(text){
+  vertexLastError = '';
+  const diag = inspectVertexAccount(text);
+  if(!diag.ok){
+    vertexLastError = diag.error;
+    refreshVertexAccountStatus();
+    showToast(diag.error, 'error');
+    return false;
+  }
+  vertexSaKey = diag.normalized;
+  if(diag.project_id) $('pv_project').value = String(diag.project_id);
+  if(diag.location && (!$('pv_base').value.trim() || $('pv_base').value.trim() === VERTEX_DEFAULT_LOCATION)){
+    $('pv_base').value = String(diag.location);
+  }
+  refreshVertexAccountStatus();
+  return true;
+}
+
 function updateProviderForm(fillDefaults = false){
-  const mini = $('pv_type').value === 'minimax';
-  $('pv_base_label').textContent = mini ? 'API 地址' : '接口地址';
-  $('pv_base').placeholder = mini ? MINIMAX_DEFAULT_BASE : 'https://api.example.com/v1';
+  const type = $('pv_type').value;
+  const mini = type === 'minimax';
+  const vertex = type === 'vertex';
+  $('pv_project_label').classList.toggle('hide', !vertex);
+  $('pv_project').classList.toggle('hide', !vertex);
+  $('pv_key_row').classList.toggle('hide', vertex);
+  $('pv_sa_row').classList.toggle('hide', !vertex);
+  $('pv_key_label').htmlFor = vertex ? 'pv_sa_pick' : 'pv_key';
+  $('pv_base_label').textContent = vertex ? 'Location' : (mini ? 'API 地址' : '接口地址');
+  $('pv_base').placeholder = vertex ? VERTEX_DEFAULT_LOCATION : (mini ? MINIMAX_DEFAULT_BASE : 'https://api.example.com/v1');
+  $('pv_key_label').textContent = vertex ? '服务账号' : 'API Key';
   $('pv_key').placeholder = mini ? '填写 MiniMax 平台的 API Key' : 'sk-...';
-  $('pv_models').placeholder = mini ? MINIMAX_MODELS.join('\n') : 'gpt-image-2\nqwen-image-3.0\nsensenova-u1.5-lite';
-  $('pv_type_hint').textContent = mini
-    ? '支持 image-01 / image-01-live；默认使用国内接口，也可填写国际站或转发地址。'
-    : '适用于 OpenAI 兼容的图片接口与代理渠道，地址通常以 /v1 结尾。';
-  $('pv_fetch_text').textContent = mini ? '填入预设模型' : '从接口获取';
+  $('pv_models').placeholder = vertex
+    ? VERTEX_MODELS.join('\n')
+    : (mini ? MINIMAX_MODELS.join('\n') : 'gpt-image-2\nqwen-image-3.0\nsensenova-u1.5-lite');
+  $('pv_type_hint').textContent = vertex
+    ? 'Gemini 出图走 Vertex generateContent；Location 推荐 global。上传 JSON 后可先验证连接，不会生图。'
+    : (mini
+      ? '支持 image-01 / image-01-live；默认使用国内接口，也可填写国际站或转发地址。'
+      : '适用于 OpenAI 兼容的图片接口与代理渠道，地址通常以 /v1 结尾。');
+  $('pv_fetch_text').textContent = (mini || vertex) ? '填入预设模型' : '从接口获取';
   if(fillDefaults){
     if(mini){
       if(!$('pv_base').value.trim()) $('pv_base').value = MINIMAX_DEFAULT_BASE;
       if(!$('pv_models').value.trim()) $('pv_models').value = MINIMAX_MODELS.join('\n');
       if(!$('pv_name').value.trim()) $('pv_name').value = 'MiniMax';
-    } else if($('pv_base').value.trim() === MINIMAX_DEFAULT_BASE){
-      $('pv_base').value = '';
-      if($('pv_models').value.trim() === MINIMAX_MODELS.join('\n')) $('pv_models').value = '';
+      $('pv_project').value = '';
+      vertexSaKey = '';
+    } else if(vertex){
+      if(!$('pv_base').value.trim() || $('pv_base').value.trim() === MINIMAX_DEFAULT_BASE){
+        $('pv_base').value = VERTEX_DEFAULT_LOCATION;
+      }
+      if(!$('pv_models').value.trim() || $('pv_models').value.trim() === MINIMAX_MODELS.join('\n')){
+        $('pv_models').value = VERTEX_MODELS.join('\n');
+      }
+      if(!$('pv_name').value.trim() || $('pv_name').value.trim() === 'MiniMax'){
+        $('pv_name').value = 'Vertex Gemini';
+      }
+    } else {
+      if($('pv_base').value.trim() === MINIMAX_DEFAULT_BASE || $('pv_base').value.trim() === VERTEX_DEFAULT_LOCATION){
+        $('pv_base').value = '';
+      }
+      if($('pv_models').value.trim() === MINIMAX_MODELS.join('\n')
+          || $('pv_models').value.trim() === VERTEX_MODELS.join('\n')){
+        $('pv_models').value = '';
+      }
+      $('pv_project').value = '';
+      vertexSaKey = '';
     }
   }
+  if(vertex) refreshVertexAccountStatus();
 }
-$('pv_type').onchange = () => { hideFetchPanel(); updateProviderForm(true); };
-
-async function saveProvider(){
-  const name = $('pv_name').value.trim();
-  const base = $('pv_base').value.trim();
-  const key = $('pv_key').value.trim();
-  const models = $('pv_models').value.split('\n').map(s => s.trim()).filter(Boolean);
-  if(!name || !base){
-    showToast('名称和接口地址为必填项', 'warning');
+$('pv_type').onchange = () => { hideFetchPanel(); vertexLastError = ''; updateProviderForm(true); };
+$('pv_sa_pick').onclick = () => $('pv_sa_file').click();
+$('pv_sa_paste_btn').onclick = () => {
+  const wrap = $('pv_sa_paste_wrap');
+  const opening = wrap.classList.toggle('hide');
+  if(!opening){
+    $('pv_sa_text').focus();
+  }
+};
+$('pv_sa_close_text').onclick = () => $('pv_sa_paste_wrap').classList.add('hide');
+$('pv_sa_apply_text').onclick = () => {
+  const raw = $('pv_sa_text').value.trim();
+  if(!raw) return showToast('请先粘贴服务账号 JSON 内容或填写服务器上的文件路径', 'warning');
+  if(applyVertexAccount(raw)){
+    $('pv_sa_paste_wrap').classList.add('hide');
+    showToast('已解析并应用服务账号凭据', 'success');
+  }
+};
+['dragenter', 'dragover'].forEach(ev =>
+  $('pv_sa_status').addEventListener(ev, e => {
+    if(!hasFiles(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    $('pv_sa_status').classList.add('dragging');
+  })
+);
+['dragleave', 'dragend'].forEach(ev =>
+  $('pv_sa_status').addEventListener(ev, e => {
+    $('pv_sa_status').classList.remove('dragging');
+  })
+);
+$('pv_sa_status').addEventListener('drop', e => {
+  if(!hasFiles(e)) return;
+  e.preventDefault();
+  e.stopPropagation();
+  $('pv_sa_status').classList.remove('dragging');
+  const file = e.dataTransfer.files[0];
+  if(!file) return;
+  if(file.size > 64 * 1024) return showToast('服务账号文件过大', 'warning');
+  const reader = new FileReader();
+  reader.onload = () => {
+    if(applyVertexAccount(String(reader.result || ''))) showToast('已读取服务账号 JSON', 'success');
+  };
+  reader.onerror = () => showToast('读取文件失败', 'error');
+  reader.readAsText(file);
+});
+$('pv_sa_check').onclick = async () => {
+  if(!$('pv_sa_paste_wrap').classList.contains('hide') && $('pv_sa_text').value.trim()){
+    if(!applyVertexAccount($('pv_sa_text').value.trim())) return;
+    $('pv_sa_paste_wrap').classList.add('hide');
+  }
+  const sp = storedProv();
+  const useStored = !vertexSaKey && sp && sp.has_key;
+  const diag = useStored ? storedVertexDiag(sp) : inspectVertexAccount(vertexSaKey);
+  if(!diag.ok){
+    refreshVertexAccountStatus();
+    return showToast(diag.error, 'error');
+  }
+  const model = $('pv_models').value.split('\n').map(s => s.trim()).filter(Boolean)[0] || VERTEX_MODELS[0];
+  showToast('正在验证 Vertex 连接…', 'info');
+  try{
+    const r = await apiFetch('/api/vertex-check', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        key: useStored ? '' : diag.normalized,
+        provider_id: useStored ? sp.id : undefined,
+        project_id: $('pv_project').value.trim() || diag.project_id || '',
+        base: $('pv_base').value.trim() || diag.location || VERTEX_DEFAULT_LOCATION,
+        model
+      })
+    });
+    const d = await r.json().catch(() => ({}));
+    if(!r.ok) return showToast('验证失败：' + (d.error || r.status), 'error');
+    if(d.project_id && !$('pv_project').value.trim()) $('pv_project').value = d.project_id;
+    showToast(`连接可用：${d.model} · ${d.location}（项目 ${d.project_id}）`, 'success');
+  }catch(e){
+    showToast('验证失败：' + friendlyErrMsg(e.message), 'error');
+  }
+};
+$('pv_sa_file').addEventListener('change', () => {
+  const file = $('pv_sa_file').files[0];
+  $('pv_sa_file').value = '';
+  if(!file) return;
+  if(file.size > 64 * 1024){
+    showToast('服务账号文件过大', 'warning');
     return;
   }
-  const body = { name, base, key, models, api_type: $('pv_type').value };
+  const reader = new FileReader();
+  reader.onload = () => {
+    if(applyVertexAccount(String(reader.result || ''))) showToast('已读取服务账号', 'success');
+  };
+  reader.onerror = () => showToast('读取文件失败', 'error');
+  reader.readAsText(file);
+});
+
+async function saveProvider(){
+  const type = $('pv_type').value;
+  if(type === 'vertex' && !$('pv_sa_paste_wrap').classList.contains('hide') && $('pv_sa_text').value.trim()){
+    if(!applyVertexAccount($('pv_sa_text').value.trim())) return;
+    $('pv_sa_paste_wrap').classList.add('hide');
+  }
+  const name = $('pv_name').value.trim();
+  const base = $('pv_base').value.trim();
+  const key = type === 'vertex' ? vertexSaKey.trim() : $('pv_key').value.trim();
+  const project_id = $('pv_project').value.trim();
+  const models = $('pv_models').value.split('\n').map(s => s.trim()).filter(Boolean);
+  if(!name || !base){
+    showToast(type === 'vertex' ? '名称和 Location 为必填项' : '名称和接口地址为必填项', 'warning');
+    return;
+  }
+  const sp = storedProv();
+  const keepStored = type === 'vertex' && !key && sp && sp.api_type === 'vertex' && sp.has_key;
+  if(type === 'vertex'){
+    const diag = keepStored ? storedVertexDiag(sp) : inspectVertexAccount(key);
+    if(!diag.ok){
+      refreshVertexAccountStatus();
+      showToast('无法保存：' + diag.error, 'error');
+      return;
+    }
+  }
+  const body = { name, base, key, models, api_type: type };
+  if(type === 'vertex') body.project_id = project_id;
   let r, saved;
   try{
     if(editingId){
@@ -2334,14 +2728,21 @@ async function deleteProvider(p){
 /* 拉取模型列表 */
 function hideFetchPanel(){ $('fetchPanel').classList.add('hide'); fetchedModels = []; }
 $('pv_fetch').onclick = async () => {
+  const type = $('pv_type').value;
+  const presetType = (type === 'minimax' || type === 'vertex');
   const base = $('pv_base').value.trim();
-  const key = $('pv_key').value.trim();
-  if(!base) return showToast('请先填写接口地址', 'warning');
-  const mini = $('pv_type').value === 'minimax';
-  showToast(mini ? '正在载入 MiniMax 预设模型…' : '正在从接口获取模型列表…', 'info');
+  const key = type === 'vertex' ? vertexSaKey.trim() : $('pv_key').value.trim();
+  if(!base) return showToast(type === 'vertex' ? '请先填写 Location' : '请先填写接口地址', 'warning');
+  showToast(
+    type === 'minimax' ? '正在载入 MiniMax 预设模型…'
+      : (type === 'vertex' ? '正在载入 Vertex 预设模型…' : '正在从接口获取模型列表…'),
+    'info'
+  );
   try{
     const r = await apiFetch('/api/fetch-models', {
-      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ base, key, api_type: $('pv_type').value })
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ base, key, api_type: type, project_id: $('pv_project').value.trim(),
+        provider_id: (!key && editingId) ? editingId : undefined })
     });
     const d = await r.json().catch(() => ({}));
     if(!r.ok) return showToast('获取失败：' + (d.error || r.status), 'error');
@@ -2349,7 +2750,7 @@ $('pv_fetch').onclick = async () => {
     if(!list.length) return showToast('接口未返回任何可用模型', 'warning');
     fetchedModels = list;
     renderFetchPanel();
-    showToast(`${mini ? '已载入预设' : '已获取'} ${list.length} 个模型`, 'success');
+    showToast(`${presetType ? '已载入预设' : '已获取'} ${list.length} 个模型`, 'success');
   }catch(e){ showToast('获取失败：' + e.message, 'error'); }
 };
 function renderFetchPanel(){
@@ -2442,7 +2843,7 @@ function updateInspireUI(){
 function fillInspireProviders(){
   const sel = $('cfg_inspire_prov');
   sel.innerHTML = '';
-  const textProviders = providers.filter(p => p.api_type !== 'minimax');
+  const textProviders = providers.filter(p => p.api_type !== 'minimax' && p.api_type !== 'vertex');
   if(!textProviders.length){
     sel.innerHTML = '<option value="">（需要先添加 OpenAI 兼容渠道）</option>';
     return;
@@ -2563,15 +2964,16 @@ function buildPayload(){
   if(ex) extra = JSON.parse(ex);
   if(!extra || typeof extra !== 'object' || Array.isArray(extra)) throw new Error('额外参数须为 JSON 对象');
 
-  const mini = isMiniMax(), live = mini && $('selModel').value === 'image-01-live';
+  const mini = isMiniMax(), vertex = isVertex(), live = mini && $('selModel').value === 'image-01-live';
   const custom = !$('sizeCustomWrap').classList.contains('hide');
   let size = custom ? ($('p_size').value.trim() || 'auto') : sizeVal;
   let aspectRatio = '';
-  if(mini && !custom){
+  if((mini || vertex) && !custom){
     const card = [...document.querySelectorAll('#ratioGrid .ratio-card')].find(c => c.dataset.v === size);
     aspectRatio = (card && card.dataset.ratio) || '';
     size = 'auto';
   }
+  if(vertex && custom) throw new Error('Vertex 请使用预设画幅比例，不支持自定义像素宽高');
   if(size !== 'auto'){
     const m = size.match(/^(\d{2,5})x(\d{2,5})$/);
     if(!m) throw new Error('尺寸格式应为 宽x高，例如 2048x1152');
@@ -2588,6 +2990,7 @@ function buildPayload(){
     }
   }
   if(mini && [...$('prompt').value].length > 1500) throw new Error('MiniMax 提示词最多 1500 个字符');
+  if(vertex && mode === 'edit') throw new Error('Vertex Gemini 出图目前仅支持文生图');
 
   return {
     provider_id: $('selProvider').value,

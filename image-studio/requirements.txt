@@ -3,3 +3,10 @@
 # 9.x 就够用（Debian 12 / Ubuntu 22.04 的 python3-pil 是 9.x），代码对
 # Image.Resampling 做了兼容，不需要强制升级到 10。
 Pillow>=9
+
+# Vertex AI（Gemini 出图）用服务账号 / ADC 换 access token。
+# 不用 Vertex 渠道可以不装；用了却没装时，生成会提示安装命令。
+google-auth>=2.0.0
+
+# 渠道密钥（API Key / 服务账号 JSON）加密保存用。
+cryptography>=41
